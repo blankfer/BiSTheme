@@ -19,5 +19,5 @@ Read ../_bisdev/CLAUDE.md first.
 - `README-Console.md`: the console's rules, API, the five steps to add it to a window, and the traps in headless testing. It ends with a pasted copy of `Console.lua`'s source, which has to be refreshed whenever `Console.lua` changes.
 - `dev/tests.lua` (134 lines): the only suite. There is no options, theme, stress, harness or release file. It does not read the TOC: it `loadfile`s a hard-coded list. First it loads `Console.lua` alone to test the fallback, then `BiSTheme.lua` followed by `Console.lua`. It covers the palette, `Fit`, the load guard, slot rotation, `Say`, fades and cursor blink. It never loads or tests `Options.lua`. It must run from the addon folder, with a mock clock and mock FontStrings.
 - There is no `dev/release.ps1` and no CurseForge project id anywhere in this folder.
-- `.github/workflows/check.yml`: calls the shared CI workflow in `arnold891-eng/bisdev` with `addon: BiSTheme`.
+- `.github/workflows/check.yml`: calls the shared CI workflow in `blankfer/bisdev` with `addon: BiSTheme`.
 - `.gitattributes` forces LF line endings, except `*.ps1` which get CRLF. `.gitignore` excludes `*.zip` and `release/`.
