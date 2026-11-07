@@ -243,7 +243,7 @@ do
   _G.GetCursorPosition = function() return 240, 240 end
 
   assert(loadfile("Minimap.lua"))()
-  ok(T.MINIMAP_MINOR == 2 and T.Minimap and T.MinimapItems, "Minimap.lua loads and exports")
+  ok(T.MINIMAP_MINOR == 3 and T.Minimap and T.MinimapItems, "Minimap.lua loads and exports")
 
   -- the rows: a note and a tick that are FUNCTIONS are asked when the menu opens, not when the
   -- addon loaded - the whole reason a menu can replace a command that printed the answer
@@ -425,7 +425,7 @@ end
 --    open right on top of another one"). The placement is a pure function; the frames only feed it.
 do
   local okL, why = pcall(function() assert(loadfile("Options.lua"))() end)
-  ok(okL and T.OPTIONS_MINOR == 3 and T.DodgeRect and T.OPEN, "Options.lua minor 3 loads, with the dodge", why)
+  ok(okL and T.OPTIONS_MINOR == 4 and T.DodgeRect and T.OPEN, "Options.lua minor 4 loads, with the dodge", why)
   ok(T.OPTIONS and T.OPTIONS.RATIO == 1.43, "the BiSTheme standard window shape is 1.43:1 (Arn, 14 Oct)")
   -- SECTIONS MOVED AROUND, NOT PADDED (Arn: "it added empty space ... but did not move sections
   -- around"): BiS Tools' options - tools 4 rows, farm 6, recap 8, social 3, threat 3, bg 4
@@ -455,6 +455,26 @@ do
     l, t = T.DodgeRect({ 850, 450, 1150, 750 }, { { 800, 400, 1100, 700 }, { 1108, 400, 1408, 700 } }, W, H)
     ok(l and not (l < 1408 and l + 300 > 800 and t > 400 and t - 300 < 700), "two open: covers neither", l, t)
   end
+end
+
+-- 8. the fingerprint (minor 4; Arn, 6 Nov: "a finger print thing only you can see so you know what version i am on"):
+--    the window's addon from its own name, its version, and the deploy stamp when the copy has one
+do
+  local META = { BiSGamba = { Version = "1.9.2", ["X-BiS-Build"] = "beta/live@9e52109+ 1106-1841" },
+                 Nebbinator = { Version = "4.0.4" } }
+  local keep = rawget(_G, "C_AddOns")
+  _G.C_AddOns = { GetAddOnMetadata = function(a, k)
+    if not META[a] then error("Invalid AddOn " .. tostring(a)) end   -- the client's way for a name it does not know
+    return META[a][k]
+  end }
+  ok(T.AddonOf("BiSGambaOptions") == "BiSGamba", "BiSGambaOptions belongs to BiSGamba", T.AddonOf("BiSGambaOptions"))
+  ok(T.AddonOf("NebbinatorOptions") == "Nebbinator", "NebbinatorOptions belongs to Nebbinator")
+  ok(T.AddonOf("SomethingElse") == nil and T.AddonOf(nil) == nil, "an unknown window: nobody's")
+  ok(T.Fingerprint("BiSGamba") == "BiSGamba 1.9.2  9e52109+ 1106-1841", "a deployed test build: version, commit, time",
+     T.Fingerprint("BiSGamba"))
+  ok(T.Fingerprint("Nebbinator") == "Nebbinator 4.0.4", "a released build: just the version", T.Fingerprint("Nebbinator"))
+  ok(T.OPTIONS.SCALE == 1.2 and T.OPTIONS.GLOW >= 0.3, "kit windows at 1.2; the hover wash clearly seen")
+  _G.C_AddOns = keep
 end
 
 if fails > 0 then error(fails .. " failed of " .. n) end
