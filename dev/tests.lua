@@ -16,6 +16,8 @@ local function FontString()
   function s:SetText(x) self.text = x end
   function s:GetText() return self.text end
   function s:SetTextColor(r, g, b, a) self.color = { r, g, b, a } end
+  function s:ClearAllPoints() self.point = nil end
+  function s:SetJustifyH(j) self.justify = j end
   function s:GetStringWidth()
     local t, tex = tostring(self.text or ""), 0
     t = t:gsub("|T[^|]-:(%d+):%d+[^|]*|t", function(w) tex = tex + tonumber(w) return "" end)
@@ -63,7 +65,7 @@ local function adv(c, dt) now = now + dt c:Paint() now = now + 0.3 c:Paint() now
 -- 1. embedded copy alone: the palette fallback stands in
 assert(loadfile("Console.lua"))()
 local T = BiSTheme
-ok(T.CONSOLE_MINOR == 5 and T.rgb and T.text, "Console.lua alone brings a palette fallback (minor 5)")
+ok(T.CONSOLE_MINOR == 6 and T.rgb and T.text, "Console.lua alone brings a palette fallback (minor 6)")
 local r, g, b = T.rgb("accent")
 ok(math.abs(r - 0xb9 / 255) < 1e-6, "fallback accent is the BiS purple")
 
@@ -425,7 +427,7 @@ end
 --    open right on top of another one"). The placement is a pure function; the frames only feed it.
 do
   local okL, why = pcall(function() assert(loadfile("Options.lua"))() end)
-  ok(okL and T.OPTIONS_MINOR == 4 and T.DodgeRect and T.OPEN, "Options.lua minor 4 loads, with the dodge", why)
+  ok(okL and T.OPTIONS_MINOR == 5 and T.DodgeRect and T.OPEN, "Options.lua minor 5 loads, with the dodge", why)
   ok(T.OPTIONS and T.OPTIONS.RATIO == 1.43, "the BiSTheme standard window shape is 1.43:1 (Arn, 14 Oct)")
   -- SECTIONS MOVED AROUND, NOT PADDED (Arn: "it added empty space ... but did not move sections
   -- around"): BiS Tools' options - tools 4 rows, farm 6, recap 8, social 3, threat 3, bg 4
@@ -474,6 +476,22 @@ do
      T.Fingerprint("BiSGamba"))
   ok(T.Fingerprint("Nebbinator") == "Nebbinator 4.0.4", "a released build: just the version", T.Fingerprint("Nebbinator"))
   ok(T.OPTIONS.SCALE == 1.2 and T.OPTIONS.GLOW >= 0.3, "kit windows at 1.2; the hover wash clearly seen")
+
+  -- 9. THE STAMP ON EVERY WINDOW (Console minor 6; Arn, 6 Nov: "we did it on one addon but we should do it for all
+  --    the windows on all addons faint out of the way only you can see"). Console.lua is the file every addon embeds.
+  ok(T.CONSOLE_MINOR == 6 and T.Stamp and T.StampText, "Console.lua minor 6 brings the stamp", T.CONSOLE_MINOR)
+  ok(T.StampText("BiSGamba") == "1.9.2  9e52109+ 1106-1841", "a deployed copy: version, commit, when", T.StampText("BiSGamba"))
+  ok(T.StampText("Nebbinator") == "4.0.4", "a release: the version alone")
+  ok(T.StampText("Nobody") == nil and T.StampText(nil) == nil, "an addon the client does not know: nothing, no error")
+  local win = { CreateFontString = function() return FontString() end }
+  local s = T.Stamp(win, "BiSGamba")
+  ok(s and s:GetText() == "1.9.2  9e52109+ 1106-1841" and s.alpha < 1 and s.size <= 8, "in the window, small and faint", s and s:GetText())
+  ok(s.point and s.point[1] == "BOTTOMRIGHT" and s.point[2] == win and s.point[4] < 0 and s.point[5] > 0,
+     "out of the way: the bottom right corner, just inside")
+  local s2 = T.Stamp(win, "BiSGamba", "TOPLEFT", 6, -4)
+  ok(s2 == s and s.point[1] == "TOPLEFT" and s.point[4] == 6, "asked again: the same label moved, never a second one")
+  ok(T.Stamp(win, "Nobody") == nil, "no version to show: nothing added")
+  ok(T.Stamp(nil, "BiSGamba") == nil, "no window: nothing, no error")
   _G.C_AddOns = keep
 end
 

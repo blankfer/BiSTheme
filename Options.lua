@@ -40,8 +40,10 @@
 
 BiSTheme = BiSTheme or {}
 local T = BiSTheme
-if (T.OPTIONS_MINOR or 0) >= 4 then return end
-T.OPTIONS_MINOR = 4      -- 2: Escape closes the window (UISpecialFrames), Arn 10 Sep
+if (T.OPTIONS_MINOR or 0) >= 5 then return end
+T.OPTIONS_MINOR = 5      -- 5: the stamp in every window's corner (Console's T.Stamp), not only in the help strip
+                         --    at rest - a hover took it away there and nothing brought it back (6 Nov 2026)
+                         -- 2: Escape closes the window (UISpecialFrames), Arn 10 Sep
                          -- 3: a window opening on top of another moves beside it (Opt:Dodge), 14 Oct
                          -- 4: everything clickable POPS on hover, windows at scale 1.2, the build at rest in the
                          --    help strip (Arn, 6 Nov: "if you hover a row it should pop", "make 20% bigger", "a
@@ -450,7 +452,7 @@ function Opt:HelpStrip(height)
     hair:SetPoint("TOPLEFT") hair:SetPoint("TOPRIGHT") hair:SetHeight(1)
     do local r, g, b = colour("edge") hair:SetColorTexture(r, g, b, 1) end
     -- at rest the title line says the build, faint; hovering a setting puts its name there instead (one label)
-    hb.title = P.fs(hb, self.fingerprint and T.text("dim", self.fingerprint) or "", 8, "ink")
+    hb.title = P.fs(hb, (self.fingerprint and not self.bisStamp) and T.text("dim", self.fingerprint) or "", 8, "ink")
     hb.title:SetPoint("TOPLEFT", 6, -4)
     hb.text = P.fs(hb, T.text("muted", O.HELP_IDLE), 8, "ink2")
     hb.text:SetPoint("TOPLEFT", hb.title, "BOTTOMLEFT", 0, -2)
@@ -749,6 +751,8 @@ function T.Options(name, w, title)
                                                                 -- may set its own after (BiS Healing's 1.25)
   f.addon = T.AddonOf(name)
   f.fingerprint = T.Fingerprint(f.addon)
+  -- every window, help strip or not (BiS Tools' Hub has none): faint in the corner, its own label (Console minor 6)
+  if T.Stamp and f.addon then T.Stamp(f, f.addon) end
   f:SetFrameStrata("MEDIUM")
   f:SetMovable(true)
   f:EnableMouse(true)

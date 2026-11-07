@@ -38,8 +38,9 @@
 
 BiSTheme = BiSTheme or {}
 local T = BiSTheme
-if (T.CONSOLE_MINOR or 0) >= 5 then return end
-T.CONSOLE_MINOR = 5      -- 5: Paint sets and measures the words only when they change (7 Oct 2026, the cost pass)
+if (T.CONSOLE_MINOR or 0) >= 6 then return end
+T.CONSOLE_MINOR = 6      -- 6: T.Stamp, the faint version in a window's corner (6 Nov 2026)
+                         -- 5: Paint sets and measures the words only when they change (7 Oct 2026, the cost pass)
                          -- 4: the cursor is its own FontString, blinked by alpha -- the words never move (11 Sep 2026)
                          -- 3: a toggled slot no longer re-appends itself to the rotation
 
@@ -239,4 +240,55 @@ function Con:Paint()
     words = T.Fit(self.words, words, room)
   end
   self.words:SetText(shown and T.text(shown.colour, words) or "")
+end
+
+--------------------------------------------------------------------
+-- THE STAMP (minor 6; Arn, 6 Nov 2026: "we did it on one addon but we should do it for all the windows on all addons
+-- faint out of the way only you can see"). Which copy of an addon a window belongs to, read from its own TOC: the
+-- version, and on a copy _bisdev/deploy.sh put in the game its X-BiS-Build stamp ("branch@sha[+] MMDD-HHMM") as
+-- "1.9.2  9e52109+ 1106-1841". A released zip has no stamp: the version alone. Here because every addon embeds this
+-- file (Options.lua is not in all of them).
+--------------------------------------------------------------------
+T.STAMP = { size = 7, alpha = 0.55, colour = "dim" }
+
+local function meta(addon, key)
+  local get = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+  if not (get and type(addon) == "string") then return nil end
+  local ok, v = pcall(get, addon, key)
+  if not ok or type(v) ~= "string" or v == "" then return nil end
+  if issecretvalue and issecretvalue(v) then return nil end
+  return v
+end
+
+--- "1.9.2  9e52109+ 1106-1841", "1.9.2", or nil for an addon the client does not know.
+function T.StampText(addon)
+  local v = meta(addon, "Version")
+  if not v then return nil end
+  local b = meta(addon, "X-BiS-Build")
+  local sha = b and b:match("@(%S+)")
+  local when = b and b:match("(%S+)$")
+  return sha and (v .. "  " .. sha .. " " .. (when or "")) or v
+end
+
+--- Put it in a window, faint: T.Stamp(frame, "BiSGamba"[, point, x, y]) - the bottom right corner unless told.
+--- One label per window: asked again, the same one moves and reads the text again. Answers it, or nil.
+function T.Stamp(frame, addon, point, x, y)
+  if not (frame and frame.CreateFontString) then return nil end
+  local text = T.StampText(addon)
+  if not text then return nil end
+  local s = frame.bisStamp
+  if not s then
+    s = frame:CreateFontString(nil, "OVERLAY")
+    if T.SetFont then T.SetFont(s, T.STAMP.size) else s:SetFont(STANDARD_TEXT_FONT, T.STAMP.size, "") end
+    frame.bisStamp = s
+  end
+  local r, g, b = T.rgb(T.STAMP.colour)
+  s:SetTextColor(r, g, b, 1)
+  s:SetAlpha(T.STAMP.alpha)
+  point = point or "BOTTOMRIGHT"
+  if s.SetJustifyH then s:SetJustifyH(point:find("RIGHT") and "RIGHT" or "LEFT") end
+  s:ClearAllPoints()
+  s:SetPoint(point, frame, point, x or (point:find("RIGHT") and -4 or 4), y or (point:find("TOP") and -3 or 3))
+  s:SetText(text)
+  return s
 end
