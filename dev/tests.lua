@@ -508,8 +508,10 @@ do
   local function Region()
     local r = { shown = true, alpha = 1 }
     function r:SetPoint(...) self.points = self.points or {} self.points[#self.points + 1] = { ... } end
-    function r:ClearAllPoints() self.points = {} end
-    function r:SetAllPoints() end
+    -- the client's: SetAllPoints stretches over the parent, and only ClearAllPoints undoes it (a SetPoint after it
+    -- adds an anchor and keeps the stretch - 8 Nov, BiS Tools' lamps painted their whole rows)
+    function r:ClearAllPoints() self.points = {} self.all = nil end
+    function r:SetAllPoints() self.all = true end
     function r:SetHeight(h) self.h = h end
     function r:SetWidth(w) self.w = w end
     function r:SetSize(w, h) self.w, self.h = w, h end
@@ -579,7 +581,7 @@ do
   function LibBiSComm:SetEnabled(v) self.on = v end
   T.settingsRoot, T.settingsPages, T.settingsOrder = nil, {}, {}
   local okL, why = pcall(function() assert(loadfile("Settings.lua"))() end)
-  ok(okL and T.SETTINGS_MINOR == 2 and T.SettingsPage and T.OpenSettings, "Settings.lua minor 2 loads", why)
+  ok(okL and T.SETTINGS_MINOR == 3 and T.SettingsPage and T.OpenSettings, "Settings.lua minor 3 loads", why)
 
   local win = Frame(UIParent)                 -- an addon's own options window, out on the screen
   win:SetScale(1.2) win:SetFrameStrata("MEDIUM") win:SetPoint("CENTER", UIParent, "CENTER", 40, 10)
@@ -680,6 +682,65 @@ do
   ok(tog.sw.label.text == "OFF", "Paint reads the setting again")
   local p = T.DashPanel(body, "SETTINGS")
   ok(p.head and p.head.text == "SETTINGS", "a panel carries its title")
+
+  -- THE WHOLE DASHBOARD, ready-made (minor 3; Arn, 8 Nov, of BiS> Tools: "it looks way way better do it for the
+  -- other ones"): a list of sections on the left, the picked one on the right, the help strip along the bottom
+  ok(T.Dashboard, "the kit builds a whole dashboard")
+  local dbd, changed, opened2 = { bell = false }, 0, 0
+  local on = true
+  local entries = {
+    { key = "frames", title = "frames", desc = "The grid of your group.",
+      switch = { get = function() return on end, set = function(v) on = v end },
+      open = { label = "open its window", func = function() opened2 = opened2 + 1 end }, usage = "/bish frames",
+      options = { { kind = "toggle", label = "bell", help = "rings", get = function(d) return d.bell end,
+                    set = function(d, v) d.bell = v end } }, db = dbd },
+    { key = "about", title = "about", desc = "Words only." },
+  }
+  local body2 = Frame(UIParent)
+  local dash = T.Dashboard(body2, { entries = entries, list = "SECTIONS", idle = "point at things",
+                                    onChange = function() changed = changed + 1 end })
+  ok(#dash.rows == 2 and dash.selected == "frames", "a row per section; the first one picked")
+  ok(dash.list.head.text == "SECTIONS" and dash.count.text == "1 of 1 on", "the list's title, and how many are on")
+  ok(dash.detail.name.text == "frames" and dash.detail.desc.text == "The grid of your group." and dash.detail.desc.just == "LEFT",
+     "the picked one's name and its words, left to right")
+  for _, r in ipairs(dash.rows) do
+    ok(not r.lamp.all and r.lamp.w == 8 and not r.bar.all and r.bar.w == 3, "a row's lamp and bar are their own size: " .. r.entry.title)
+  end
+  ok(dash.rows[1].lamp.color and dash.rows[1].state.text == "ON", "a section that is on: lamp lit, ON")
+  dash.detail.switch.scripts.OnClick(dash.detail.switch)
+  ok(on == false and dash.rows[1].state.text == "off" and changed == 1, "the big switch turns it off, the list follows, the addon told")
+  ok(dash.pages.frames[1].label.alpha < 1, "its settings grey while it is off")
+  dash.rows[1].scripts.OnClick(dash.rows[1], "RightButton")
+  ok(on == true, "right-click in the list switches it back")
+  dash.pages.frames[1].sw.scripts.OnClick(dash.pages.frames[1].sw)
+  ok(dbd.bell == true and changed == 3, "a setting changes, the addon told")
+  ok(dash.detail.open:IsShown() and dash.detail.usage.text == "command:  /bish frames", "a window button and its command")
+  local panelUp2 = true
+  _G.SettingsPanel = { IsShown = function() return panelUp2 end, Hide = function() panelUp2 = false end }
+  local keepHide2 = rawget(_G, "HideUIPanel")
+  _G.HideUIPanel = function(x) x:Hide() end
+  dash.detail.open.scripts.OnClick(dash.detail.open)
+  _G.SettingsPanel, _G.HideUIPanel = nil, keepHide2
+  ok(panelUp2 == false and opened2 == 1, "its button puts the game's options away, then opens the window")
+  dash.rows[2].scripts.OnClick(dash.rows[2], "LeftButton")
+  ok(dash.selected == "about" and not dash.detail.switch:IsShown() and not dash.detail.open:IsShown()
+     and dash.detail.none:IsShown() and not dash.pages.frames[1]:IsShown(), "a section with no switch and nothing to set says so; the last one's rows go")
+  ok(dash.rows[2].state.text == "" and not dash.rows[2].lamp.all, "and its row has no ON/off")
+  dash.rows[1].scripts.OnEnter(dash.rows[1])
+  ok(dash.rows[1].wash.alpha == 1 and dash.help.text.text == "The grid of your group.", "a list row pops and reads its words")
+  dash.rows[1].scripts.OnLeave(dash.rows[1])
+  ok(dash.help.text.text == "point at things", "and the strip goes back to its idle words")
+  -- MANY SETTINGS: one column, rows a little shorter, never two columns
+  local many = {}
+  for i = 1, 12 do many[i] = { kind = "toggle", label = "s" .. i, get = function() return false end, set = function() end } end
+  local body3 = Frame(UIParent)
+  local d3 = T.Dashboard(body3, { entries = { { key = "x", title = "x", desc = "", options = many } } })
+  d3.detail.GetHeight = function() return 330 end
+  d3:Paint()
+  local full, same = true, true
+  for _, r in ipairs(d3.pages.x) do if r.w ~= nil then full = false end if r.h ~= d3.step - 4 then same = false end end
+  ok(full and same and d3.step < 36 and d3.step >= T.SETTINGS.DASH.MIN_STEP, "twelve settings: one column, shorter rows", d3.step)
+  ok(d3.count.text == "", "no switches: no count")
 
   ok(T.OpenSettings("BiSHealing") and opened[#opened] == "BiS> Healing", "the minimap's right-click opens its page")
   ok(T.OpenSettings() and opened[#opened] == "BiS>", "and the front page")
