@@ -243,7 +243,7 @@ do
   _G.GetCursorPosition = function() return 240, 240 end
 
   assert(loadfile("Minimap.lua"))()
-  ok(T.MINIMAP_MINOR == 3 and T.Minimap and T.MinimapItems, "Minimap.lua loads and exports")
+  ok(T.MINIMAP_MINOR == 4 and T.Minimap and T.MinimapItems, "Minimap.lua loads and exports")
 
   -- the rows: a note and a tick that are FUNCTIONS are asked when the menu opens, not when the
   -- addon loaded - the whole reason a menu can replace a command that printed the answer
@@ -343,6 +343,24 @@ do
   b:Click("RightButton")
   ok(ran.options2 == true, "right-clicking runs the options window directly")
   ok(menu:IsShown() == false, "and does not leave the menu open behind it")
+
+  -- ONE STANDARD (minor 4; Arn, 7 Nov: "sometimes left click does one thing, sometimes right click does another"):
+  -- left = the main window when the addon has one, right = its page under BiS> in the game's options
+  b.opts.onLeft, b.opts.leftLabel = function() ran.window = true end, "the frames"
+  b:Click("LeftButton")
+  ok(ran.window == true and menu:IsShown() == false, "left-click opens the addon's main window, not the menu")
+  local keepPages, keepOpen = T.settingsPages, T.OpenSettings
+  local openedFor
+  T.settingsPages = { Test = { category = {} } }
+  T.OpenSettings = function(a) openedFor = a return true end
+  ran.options2 = nil
+  b:Click("RightButton")
+  ok(openedFor == "Test" and ran.options2 == nil, "right-click opens its page in the game's options when it has one")
+  T.OpenSettings = function() return false end
+  b:Click("RightButton")
+  ok(ran.options2 == true, "and its own options window when the game's panel will not open")
+  T.settingsPages, T.OpenSettings = keepPages, keepOpen
+  b.opts.onLeft, b.opts.leftLabel = nil, nil
 end
 
 -- ------------------------------------------------------------------------------------------
@@ -475,6 +493,128 @@ do
   ok(T.Fingerprint("Nebbinator") == "Nebbinator 4.0.4", "a released build: just the version", T.Fingerprint("Nebbinator"))
   ok(T.OPTIONS.SCALE == 1.2 and T.OPTIONS.GLOW >= 0.3, "kit windows at 1.2; the hover wash clearly seen")
   _G.C_AddOns = keep
+end
+
+-- 10. THE "BiS>" HOME IN THE GAME'S OPTIONS (Settings.lua minor 1; Arn, 7 Nov: "when they open the options, they go
+--     to add-ons ... they'll just see BiS> they click into that add-on and then they can see all our add-ons").
+--     The game's panel stands in as Forever's does where it matters: a subcategory needs a REGISTERED parent, an
+--     unknown id opens nothing, categories answer GetID.
+do
+  local keepCF, keepS, keepLib = _G.CreateFrame, rawget(_G, "Settings"), rawget(_G, "LibBiSComm")
+  local function Region()
+    local r = { shown = true, alpha = 1 }
+    function r:SetPoint(...) self.points = self.points or {} self.points[#self.points + 1] = { ... } end
+    function r:ClearAllPoints() self.points = {} end
+    function r:SetAllPoints() end
+    function r:SetHeight(h) self.h = h end
+    function r:SetWidth(w) self.w = w end
+    function r:SetSize(w, h) self.w, self.h = w, h end
+    function r:SetColorTexture(...) self.color = { ... } end
+    function r:SetAlpha(a) self.alpha = a end
+    function r:SetFont(_, s) self.size = s end
+    function r:SetTextColor(...) self.tc = { ... } end
+    function r:SetJustifyH(j) self.just = j end
+    function r:SetText(t) self.text = t end
+    function r:GetText() return self.text end
+    function r:Show() self.shown = true end
+    function r:Hide() self.shown = false end
+    function r:IsShown() return self.shown end
+    return r
+  end
+  local function Frame(parent)
+    local f = Region()
+    f.parent, f.scripts, f.scale, f.strata = parent, {}, 1, "MEDIUM"
+    function f:CreateFontString() return Region() end
+    function f:CreateTexture() return Region() end
+    function f:SetScript(k, fn) self.scripts[k] = fn end
+    function f:GetScript(k) return self.scripts[k] end
+    function f:SetParent(p) self.parent = p end
+    function f:GetParent() return self.parent end
+    function f:SetScale(s) self.scale = s end
+    function f:GetScale() return self.scale end
+    function f:SetFrameStrata(s) self.strata = s end
+    function f:GetFrameStrata() return self.strata end
+    function f:GetNumPoints() return #(self.points or {}) end
+    function f:GetPoint(i) return unpack(self.points[i]) end
+    function f:Show() self.shown = true if self.scripts.OnShow then self.scripts.OnShow(self) end end
+    function f:Hide() self.shown = false if self.scripts.OnHide then self.scripts.OnHide(self) end end
+    return f
+  end
+  _G.UIParent = _G.UIParent or Frame(nil)
+  _G.CreateFrame = function(_, _, parent) return Frame(parent) end
+  local reg, opened, nextId = {}, {}, 0
+  local function Category(name)
+    nextId = nextId + 1
+    local c = { name = name, id = nextId }
+    function c:GetID() return self.id end
+    reg[c.id] = c
+    return c
+  end
+  local addons = {}
+  _G.Settings = {
+    RegisterCanvasLayoutCategory = function(frame, name) local c = Category(name) c.frame = frame return c, {} end,
+    RegisterAddOnCategory = function(c) c.addon = true addons[#addons + 1] = c end,
+    RegisterCanvasLayoutSubcategory = function(parent, frame, name)
+      if not (parent and parent.addon) then error("parent category is not registered") end
+      local c = Category(name) c.frame, c.parentCat = frame, parent
+      return c, {}
+    end,
+    OpenToCategory = function(id) if not reg[id] then return false end opened[#opened + 1] = reg[id].name return true end,
+  }
+  _G.LibBiSComm = { on = true }
+  function LibBiSComm:Enabled() return self.on end
+  function LibBiSComm:SetEnabled(v) self.on = v end
+  T.settingsRoot, T.settingsPages, T.settingsOrder = nil, {}, {}
+  local okL, why = pcall(function() assert(loadfile("Settings.lua"))() end)
+  ok(okL and T.SETTINGS_MINOR == 1 and T.SettingsPage and T.OpenSettings, "Settings.lua minor 1 loads", why)
+
+  local win = Frame(UIParent)                 -- an addon's own options window, out on the screen
+  win:SetScale(1.2) win:SetFrameStrata("MEDIUM") win:SetPoint("CENTER", UIParent, "CENTER", 40, 10)
+  local page = T.SettingsPage("BiSHealing", { title = "Healing", about = "Click-to-heal frames.",
+    status = function() return "frames on  -  target off" end, window = function() return win end,
+    api = { name = "BiSHealingAPI", about = "the grid, read-only" },
+    open = { label = "mouse binds", func = function() end } })
+  T.SettingsPage("BiSGuild", { title = "Guild", about = "Officers' terminal.", build = function(body) body.drawn = true end })
+  ok(#addons == 1 and addons[1].name == "BiS>", "ONE entry in the game's AddOns list: BiS>")
+  ok(page and page.category and page.category.parentCat == addons[1] and page.category.name == "BiS> Healing",
+     "each addon a page under it, named BiS> <addon>")
+  ok(T.settingsOrder[1] == "BiSGuild" and T.settingsOrder[2] == "BiSHealing", "kept in name order")
+  T.SettingsPage("BiSHealing", { title = "Healing", about = "again", window = function() return win end,
+    api = { name = "BiSHealingAPI", about = "the grid, read-only" }, open = { label = "mouse binds", func = function() end } })
+  ok(#T.settingsOrder == 2 and #addons == 1, "asked again: the same page, no second entry")
+
+  -- the front page: a row per addon, what is on, the channel and the API
+  T.settingsRoot.frame:Show()
+  local root = T.settingsRoot.frame
+  ok(root.rows[1].name.text == "BiS> Guild" and root.rows[2].name.text == "BiS> Healing", "the front page lists them")
+  ok(root.commBtn and root.commBtn.label.text:find("ON", 1, true), "the shared channel: said ON, a switch")
+  root.commBtn.scripts.OnClick(root.commBtn)
+  ok(LibBiSComm.on == false and root.commBtn.label.text:find("OFF", 1, true), "one click turns it off, and it says so")
+  root.commBtn.scripts.OnEnter(root.commBtn)
+  ok(root.commBtn.wash.alpha == 1, "its button pops under the mouse")
+  ok(root.api.text:find("BiSHealingAPI", 1, true), "the API notes name each addon's table")
+
+  -- an addon's page holds its own options window, then gives it back as it was
+  page.frame:Show()
+  ok(win.parent == page.frame.body and win.scale == 1 and win.shown, "its options window sits inside the page, unscaled")
+  ok(page.frame.openBtn and page.frame.openBtn.label.text == "mouse binds", "and a big button to the main window")
+  page.frame:Hide()
+  ok(win.parent == UIParent and win.scale == 1.2 and not win.shown and win.points[1][1] == "CENTER" and win.points[1][4] == 40,
+     "leaving the page: back on the screen where it was, scale and all, hidden")
+  T.settingsPages.BiSGuild.frame:Show()
+  ok(T.settingsPages.BiSGuild.frame.body.drawn, "an addon without an options window draws its page itself")
+
+  ok(T.OpenSettings("BiSHealing") and opened[#opened] == "BiS> Healing", "the minimap's right-click opens its page")
+  ok(T.OpenSettings() and opened[#opened] == "BiS>", "and the front page")
+  ok(T.OpenSettings("Nobody") and opened[#opened] == "BiS>", "an addon with no page: the front page")
+
+  -- an older client without the panel: nothing, no error
+  _G.Settings = nil
+  T.settingsRoot, T.settingsPages, T.settingsOrder = nil, {}, {}
+  ok(T.SettingsPage("BiSTools", { title = "Tools" }) == nil and T.OpenSettings("BiSTools") == false,
+     "no game options panel: no page, no error - the addon's own window still works")
+  _G.CreateFrame, _G.Settings, _G.LibBiSComm = keepCF, keepS, keepLib
+  T.settingsRoot, T.settingsPages, T.settingsOrder = nil, {}, {}
 end
 
 if fails > 0 then error(fails .. " failed of " .. n) end
