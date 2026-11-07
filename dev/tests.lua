@@ -243,7 +243,7 @@ do
   _G.GetCursorPosition = function() return 240, 240 end
 
   assert(loadfile("Minimap.lua"))()
-  ok(T.MINIMAP_MINOR == 4 and T.Minimap and T.MinimapItems, "Minimap.lua loads and exports")
+  ok(T.MINIMAP_MINOR == 5 and T.Minimap and T.MinimapItems, "Minimap.lua loads and exports")
 
   -- the rows: a note and a tick that are FUNCTIONS are asked when the menu opens, not when the
   -- addon loaded - the whole reason a menu can replace a command that printed the answer
@@ -354,11 +354,15 @@ do
   T.settingsPages = { Test = { category = {} } }
   T.OpenSettings = function(a) openedFor = a return true end
   ran.options2 = nil
+  -- minor 5 (Arn, 7 Nov live: "i liked these old option windows that opened without opening the game option
+  -- window"): right-click is the addon's OWN options window even when it has a page under BiS>
   b:Click("RightButton")
-  ok(openedFor == "Test" and ran.options2 == nil, "right-click opens its page in the game's options when it has one")
-  T.OpenSettings = function() return false end
+  ok(ran.options2 == true and openedFor == nil, "right-click opens its own options window, not the game's options")
+  local keepRight = b.opts.onRight
+  b.opts.onRight = nil
   b:Click("RightButton")
-  ok(ran.options2 == true, "and its own options window when the game's panel will not open")
+  ok(openedFor == "Test", "an addon with no options window of its own: its page under BiS>")
+  b.opts.onRight = keepRight
   T.settingsPages, T.OpenSettings = keepPages, keepOpen
   b.opts.onLeft, b.opts.leftLabel = nil, nil
 end
@@ -514,8 +518,13 @@ do
     function r:SetFont(_, s) self.size = s end
     function r:SetTextColor(...) self.tc = { ... } end
     function r:SetJustifyH(j) self.just = j end
+    function r:SetJustifyV(j) self.justV = j end
+    function r:SetWordWrap(w) self.wrap = w end
     function r:SetText(t) self.text = t end
     function r:GetText() return self.text end
+    -- the client answers 0 for a size nothing set (an anchored frame's size is the client's to work out)
+    function r:GetWidth() return self.w or 0 end
+    function r:GetHeight() return self.h or 0 end
     function r:Show() self.shown = true end
     function r:Hide() self.shown = false end
     function r:IsShown() return self.shown end
@@ -536,6 +545,10 @@ do
     function f:GetFrameStrata() return self.strata end
     function f:GetNumPoints() return #(self.points or {}) end
     function f:GetPoint(i) return unpack(self.points[i]) end
+    function f:RegisterForClicks(...) self.clicks = { ... } end
+    function f:EnableMouse(on) self.mouse = on end
+    function f:SetFrameLevel(n) self.level = n end
+    function f:GetFrameLevel() return self.level or 1 end
     function f:Show() self.shown = true if self.scripts.OnShow then self.scripts.OnShow(self) end end
     function f:Hide() self.shown = false if self.scripts.OnHide then self.scripts.OnHide(self) end end
     return f
@@ -566,7 +579,7 @@ do
   function LibBiSComm:SetEnabled(v) self.on = v end
   T.settingsRoot, T.settingsPages, T.settingsOrder = nil, {}, {}
   local okL, why = pcall(function() assert(loadfile("Settings.lua"))() end)
-  ok(okL and T.SETTINGS_MINOR == 1 and T.SettingsPage and T.OpenSettings, "Settings.lua minor 1 loads", why)
+  ok(okL and T.SETTINGS_MINOR == 2 and T.SettingsPage and T.OpenSettings, "Settings.lua minor 2 loads", why)
 
   local win = Frame(UIParent)                 -- an addon's own options window, out on the screen
   win:SetScale(1.2) win:SetFrameStrata("MEDIUM") win:SetPoint("CENTER", UIParent, "CENTER", 40, 10)
@@ -579,7 +592,7 @@ do
   ok(page and page.category and page.category.parentCat == addons[1] and page.category.name == "BiS> Healing",
      "each addon a page under it, named BiS> <addon>")
   ok(T.settingsOrder[1] == "BiSGuild" and T.settingsOrder[2] == "BiSHealing", "kept in name order")
-  T.SettingsPage("BiSHealing", { title = "Healing", about = "again", window = function() return win end,
+  T.SettingsPage("BiSHealing", { title = "Healing", about = "again", status = function() return "frames on  -  target off" end, window = function() return win end,
     api = { name = "BiSHealingAPI", about = "the grid, read-only" }, open = { label = "mouse binds", func = function() end } })
   ok(#T.settingsOrder == 2 and #addons == 1, "asked again: the same page, no second entry")
 
@@ -594,35 +607,79 @@ do
   ok(root.commBtn.wash.alpha == 1, "its button pops under the mouse")
   ok(root.api.text:find("BiSHealingAPI", 1, true), "the API notes name each addon's table")
 
-  -- an addon's page holds its own options window, then gives it back as it was
+  -- minor 2 (Arn, 7 Nov live: "we esentially just took the old option window kept it the same size and nestels it
+  -- inside a bigger window" / "dont just shrink remake them"): a page NEVER takes the options window in. Until the
+  -- addon draws its own dashboard, its page is the head, what is on, and a big button to the options window.
+  win:Hide()                                   -- an options window starts hidden, as the kit builds it
   page.frame:Show()
-  ok(win.parent == page.frame.body and win.scale == 1 and win.shown, "its options window sits inside the page, unscaled")
-  ok(page.frame.openBtn and page.frame.openBtn.label.text == "mouse binds", "and a big button to the main window")
-  -- the button puts the game's options panel away first, so the main window is not left behind it
+  ok(win.parent == UIParent and win.scale == 1.2 and not win.shown, "the options window is left alone: not moved, not shrunk")
+  ok(page.frame.openBtn and page.frame.openBtn.label.text == "mouse binds", "a big button to the main window")
+  ok(page.frame.state and page.frame.state.text == "frames on  -  target off", "the page says what is on")
+  ok(page.frame.optBtn and page.frame.optBtn:IsShown(), "and a button to its options window")
+  -- the buttons put the game's options panel away first, so the window they open is not left behind it
   local panelUp = true
   _G.SettingsPanel = { IsShown = function() return panelUp end, Hide = function() panelUp = false end }
   local keepHide = rawget(_G, "HideUIPanel")
   _G.HideUIPanel = function(p) p:Hide() end
   page.frame.openBtn.scripts.OnClick(page.frame.openBtn)
   ok(panelUp == false, "a page's main-window button closes the game's options first")
+  panelUp = true
+  page.frame.optBtn.scripts.OnClick(page.frame.optBtn)
+  ok(panelUp == false and win.shown and win.parent == UIParent and win.scale == 1.2,
+     "the options button closes the game's options and shows the window as it always was")
   _G.SettingsPanel, _G.HideUIPanel = nil, keepHide
   page.frame:Hide()
-  -- A WIDE WINDOW FITS: shrunk to the page's width, never grown
-  win.GetWidth = function() return 800 end
-  page.frame.body.GetWidth = function() return 400 end
-  page.frame:Show()
-  ok(math.abs(win.scale - 0.5) < 1e-9, "an options window twice the page's width is shown at half size", win.scale)
-  page.frame:Hide()
-  ok(win.scale == 1.2, "and given back at its own size")
-  win.GetWidth = function() return 300 end
-  page.frame:Show()
-  ok(win.scale == 1, "a narrower one is never grown", win.scale)
-  page.frame:Hide()
-  win.GetWidth = nil
-  ok(win.parent == UIParent and win.scale == 1.2 and not win.shown and win.points[1][1] == "CENTER" and win.points[1][4] == 40,
-     "leaving the page: back on the screen where it was, scale and all, hidden")
-  T.settingsPages.BiSGuild.frame:Show()
-  ok(T.settingsPages.BiSGuild.frame.body.drawn, "an addon without an options window draws its page itself")
+  ok(win.shown, "leaving the page does not touch the window")
+  win:Hide()
+  local g = T.settingsPages.BiSGuild
+  g.spec.refresh = function(body) body.refreshed = (body.refreshed or 0) + 1 end
+  g.frame:Show()
+  ok(g.frame.body.drawn and g.frame.body.refreshed == 1, "a dashboard page draws itself, then refreshes")
+  ok(not (g.frame.optBtn and g.frame.optBtn:IsShown()), "and has no stand-in button")
+  g.frame:Hide() g.frame:Show()
+  ok(g.frame.body.refreshed == 2, "every time it is shown again: refreshed, not built twice")
+
+  -- THE DASHBOARD KIT: big readable controls (cockpit: "very easy to read, very functional")
+  ok(T.DashControl and T.DashSwitch and T.DashPanel and T.DashHelp, "the dashboard kit is there")
+  local body = Frame(UIParent)
+  local said
+  local help = T.DashHelp(body)
+  local ctx = { help = help, changed = 0 }
+  function ctx.onChange() ctx.changed = ctx.changed + 1 end
+  local dbx = { on = false, look = "a", size = 5 }
+  local tog = T.DashControl(body, { kind = "toggle", label = "sound", help = "plays a bell",
+    get = function(d) return d.on end, set = function(d, v) d.on = v end }, dbx, ctx)
+  ok(tog.sw.label.text == "OFF", "a switch says OFF")
+  tog.sw.scripts.OnClick(tog.sw)
+  ok(dbx.on == true and tog.sw.label.text == "ON" and ctx.changed == 1, "one click: ON, saved, the page told")
+  tog.scripts.OnEnter(tog)
+  ok(tog.wash.alpha == 1 and tog.bar.alpha == 1, "the row POPS under the mouse (wash and a bar)")
+  ok(help.text.text == "plays a bell", "and its help shows in the help strip")
+  tog.sw.scripts.OnEnter(tog.sw)
+  ok(tog.sw.wash.alpha == 1 and tog.wash.alpha == 1, "the switch pops too, and keeps its row lit")
+  local seg = T.DashControl(body, { kind = "seg", label = "look", values = { "a", "b", "c" },
+    get = function(d) return d.look end, set = function(d, v) d.look = v end }, dbx, ctx)
+  ok(#seg.segs == 3 and seg.segs[1].on and not seg.segs[2].on, "a choice lights the one picked")
+  seg.segs[3].scripts.OnClick(seg.segs[3])
+  ok(dbx.look == "c" and seg.segs[3].on and not seg.segs[1].on, "click another: picked, lit")
+  local step = T.DashControl(body, { kind = "step", label = "size", min = 1, max = 6, step = 2,
+    get = function(d) return d.size end, set = function(d, v) d.size = v end, show = function(d) return d.size .. " yd" end }, dbx, ctx)
+  ok(step.val.text == "5 yd", "a stepper shows its value its own way")
+  step.plus.scripts.OnClick(step.plus)
+  ok(dbx.size == 6 and step.val.text == "6 yd", "the stepper clamps at its max, not the setter")
+  step.minus.scripts.OnClick(step.minus) step.minus.scripts.OnClick(step.minus) step.minus.scripts.OnClick(step.minus)
+  ok(dbx.size == 1, "and at its min")
+  local hit
+  local btn = T.DashControl(body, { kind = "button", label = "reset", button = "reset", action = function() hit = true end }, dbx, ctx)
+  btn.btn.scripts.OnClick(btn.btn)
+  ok(hit and btn.btn.label.text == "reset", "a button runs its action")
+  ok(not pcall(T.DashControl, body, { kind = "slider", label = "x" }, dbx, ctx), "a fifth kind is refused")
+  tog:SetDim(true)
+  ok(tog.label.alpha < 1, "a row dims while its tool is off")
+  dbx.on = false tog:Paint()
+  ok(tog.sw.label.text == "OFF", "Paint reads the setting again")
+  local p = T.DashPanel(body, "SETTINGS")
+  ok(p.head and p.head.text == "SETTINGS", "a panel carries its title")
 
   ok(T.OpenSettings("BiSHealing") and opened[#opened] == "BiS> Healing", "the minimap's right-click opens its page")
   ok(T.OpenSettings() and opened[#opened] == "BiS>", "and the front page")
