@@ -598,7 +598,27 @@ do
   page.frame:Show()
   ok(win.parent == page.frame.body and win.scale == 1 and win.shown, "its options window sits inside the page, unscaled")
   ok(page.frame.openBtn and page.frame.openBtn.label.text == "mouse binds", "and a big button to the main window")
+  -- the button puts the game's options panel away first, so the main window is not left behind it
+  local panelUp = true
+  _G.SettingsPanel = { IsShown = function() return panelUp end, Hide = function() panelUp = false end }
+  local keepHide = rawget(_G, "HideUIPanel")
+  _G.HideUIPanel = function(p) p:Hide() end
+  page.frame.openBtn.scripts.OnClick(page.frame.openBtn)
+  ok(panelUp == false, "a page's main-window button closes the game's options first")
+  _G.SettingsPanel, _G.HideUIPanel = nil, keepHide
   page.frame:Hide()
+  -- A WIDE WINDOW FITS: shrunk to the page's width, never grown
+  win.GetWidth = function() return 800 end
+  page.frame.body.GetWidth = function() return 400 end
+  page.frame:Show()
+  ok(math.abs(win.scale - 0.5) < 1e-9, "an options window twice the page's width is shown at half size", win.scale)
+  page.frame:Hide()
+  ok(win.scale == 1.2, "and given back at its own size")
+  win.GetWidth = function() return 300 end
+  page.frame:Show()
+  ok(win.scale == 1, "a narrower one is never grown", win.scale)
+  page.frame:Hide()
+  win.GetWidth = nil
   ok(win.parent == UIParent and win.scale == 1.2 and not win.shown and win.points[1][1] == "CENTER" and win.points[1][4] == 40,
      "leaving the page: back on the screen where it was, scale and all, hidden")
   T.settingsPages.BiSGuild.frame:Show()
