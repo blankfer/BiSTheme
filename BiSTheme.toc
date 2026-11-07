@@ -4,7 +4,7 @@
 ## IconTexture: Interface\Icons\INV_Fabric_Purple_01
 ## Notes: Shared colour palette, the BiS> header prompt, and the options window for the BiS* addons. Load first; other addons list it under OptionalDeps.
 ## Author: Kumlust
-## Version: 1.5.0
+## Version: 2.0.0
 ## X-Category: Library
 ## SavedVariables: BiSThemeDB
 
@@ -12,3 +12,4 @@ BiSTheme.lua
 Console.lua
 Options.lua
 Minimap.lua
+Settings.lua
