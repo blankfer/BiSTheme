@@ -488,11 +488,11 @@ local function page(out, v, w, h, sw)
   local sh = sayHigh(v, W)
   if v.say and on(sw, "say") and c:left() >= sh + 4 * (L.ROW + 2) then c:bottom("say", sh) end
   -- what the list needs to be worth having; the picture takes what is over
-  local need = (v.rows or 0) > 0 and 4 * (L.ROW + 2) or 0
+  local need = (v.rows or 0) > 0 and (v.icons and 2 or 4) * (L.ROW + 2) or 0       -- (lines of icons go first: the list still rolls)
   local mids = (nb > 0 and L.BOX_H + L.GAP or 0) + (nt > 0 and L.TAB_H + L.GAP or 0) + (v.find and L.TAB_H + L.GAP or 0) + ((v.strip and on(sw, "strip")) and L.STRIP + L.GAP or 0)
   if hero and v.number then
     local left = c:left()
-    if left >= L.NUMBER_MIN + need then c:top("hero", left >= L.NUMBER + need + mids + 2 * L.ICON_H and L.NUMBER or L.NUMBER_MIN) end
+    if left >= L.NUMBER_MIN + need then c:top("hero", left >= L.NUMBER + L.GAP + need + mids + #(v.icons or {}) * (L.ICON_H + L.GAP) and L.NUMBER or L.NUMBER_MIN) end
     iconLines(c, v, need + mids)
   elseif hero then
     local room = c:left() - need - mids

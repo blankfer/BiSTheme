@@ -176,6 +176,17 @@ do
   ok(bare == 0 and named >= 5, "small icons off: with their names, and pages", named)
   v.cards = {} for _, b in ipairs((T.DeckLayout(v, 300, 620))) do if b.kind == "app" then ok(not b.bare, "room enough: with their names") break end end
 end
+-- BOTH LINES OF ICONS AT HIS SIZE (Arn, 22 Nov: the Calls were not there at 260 x 462 - the list had kept the room)
+do
+  local v = { kind = "page", number = true, hero = true, icons = { 4, 4 }, rows = 8, tabs = 4, keys = 3, say = true, sayN = 60, apps = 12 }
+  for _, z in ipairs({ { 260, 462 }, { 260, 420 }, { 300, 500 }, { 443, 314 }, { 600, 420 } }) do
+    local lines, rows, number = {}, 0, false
+    for _, b in ipairs((T.DeckLayout(v, z[1], z[2]))) do
+      if b.kind == "icon" then lines[b.line] = (lines[b.line] or 0) + 1 elseif b.kind == "row" then rows = rows + 1 elseif b.kind == "hero" then number = true end
+    end
+    ok(lines[1] == 4 and lines[2] == 4 and number and rows >= 2, "the number, both lines, a list: " .. z[1] .. " x " .. z[2], tostring(lines[1]) .. " " .. tostring(lines[2]) .. " rows " .. rows)
+  end
+end
 -- NOTHING IS CUT OFF (Arn, 22 Nov, "more stuff cut off": "Ragefire Cha..." and "FIRST TIME HE..." side by side at 260)
 do
   local function at(v, w, h, kind) for _, b in ipairs((T.DeckLayout(v, w, h))) do if b.kind == kind then return b end end end
