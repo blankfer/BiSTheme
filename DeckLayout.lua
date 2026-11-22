@@ -17,7 +17,7 @@
 
   THE VIEW is data a page handed in (Deck.lua asks it), counts only:
     { kind = "home",  cards = n or { { p = urgency, lines = n, size = "S"|"M"|"L"|nil (auto), btn = bool }, ... most urgent first }, apps = n, dock = n }
-    { kind = "page",  boxes = n, tabs = n, rows = n, keys = n, big = true, hero = true, say = true, strip = true, textLines = n }
+    { kind = "page",  find = true, boxes = n, tabs = n, rows = n, keys = n, big = true, hero = true, say = true, strip = true, textLines = n }
     { kind = "steps", steps = n, textLines = n, note = true, keys = n, hero = true }
     { kind = "switches", groups = { n, n, ... } }           `skip` = how far a list is scrolled (all kinds)
   SWITCHES (sw[key] == false hides): cards, apps, dock, hero, boxes, tabs, strip, say, keys, list, code.
@@ -342,6 +342,7 @@ local function page(out, v, w, h, sw)
     if lw > 0 then
       local c = column(out, x, y, lw, bottom - y)
       if nt > 0 then local ty = c.y0 c.y0 = ty + L.TAB_H + L.GAP spread(out, "tab", nt, x, ty, lw, L.TAB_H) end
+      if v.find then c:top("find", L.TAB_H) end
       if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
       if v.say and on(sw, "say") then c:bottom("say", L.SAY) end
       rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip)
@@ -349,6 +350,10 @@ local function page(out, v, w, h, sw)
     end
     local c = column(out, x, y, W, bottom - y)
     actions(c, v, sw)
+    if lw == 0 then                                          -- (no list: its tabs and its search stand over the words)
+      if nt > 0 and c:left() >= L.TAB_H then local ty = c.y0 c.y0 = ty + L.TAB_H + L.GAP spread(out, "tab", nt, x, ty, W, L.TAB_H) end
+      if v.find and c:left() >= L.TAB_H then c:top("find", L.TAB_H) end
+    end
     if nb > 0 and c:left() >= L.BOX_H then
       local per = fit(nb, W, 62)
       local by = c.y0
@@ -364,7 +369,7 @@ local function page(out, v, w, h, sw)
   if v.say and on(sw, "say") and c:left() >= L.SAY + 4 * (L.ROW + 2) then c:bottom("say", L.SAY) end
   -- what the list needs to be worth having; the picture takes what is over
   local need = (v.rows or 0) > 0 and 4 * (L.ROW + 2) or 0
-  local mids = (nb > 0 and L.BOX_H + L.GAP or 0) + (nt > 0 and L.TAB_H + L.GAP or 0) + ((v.strip and on(sw, "strip")) and L.STRIP + L.GAP or 0)
+  local mids = (nb > 0 and L.BOX_H + L.GAP or 0) + (nt > 0 and L.TAB_H + L.GAP or 0) + (v.find and L.TAB_H + L.GAP or 0) + ((v.strip and on(sw, "strip")) and L.STRIP + L.GAP or 0)
   if hero then
     local room = c:left() - need - mids
     if room >= L.HERO_MIN then c:top("hero", min(floor(h * L.HERO_SHARE), room - L.GAP)) end
@@ -379,6 +384,7 @@ local function page(out, v, w, h, sw)
     c.y0 = ty + L.TAB_H + L.GAP
     spread(out, "tab", nt, x, ty, W, L.TAB_H)
   end
+  if v.find and c:left() >= L.TAB_H then c:top("find", L.TAB_H) end
   if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
   if (v.textLines or 0) > 0 and c:left() >= L.LINE + 8 then c:top("text", min(v.textLines * L.LINE + 8, c:left())) end
   if (v.rows or 0) > 0 and c:left() >= L.ROW then

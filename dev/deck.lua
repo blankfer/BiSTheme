@@ -436,6 +436,35 @@ do
   D.Paint()
   ok(keepA or not tile.pic.shown, "none: its letters")
 end
+-- a search line, a row with a picture, and what every part of a page is told: the tab
+do
+  local words, entered, tabs = "", nil, {}
+  local function seen(k) return function(tab) tabs[k] = tab return nil end end
+  D.Register{ owner = "BiSFind", key = "p", name = "Find", page = {
+    tabs = function() return { "ONE", "TWO" } end, big = seen("big"), keys = seen("keys"), text = seen("text"), hero = seen("hero"), say = seen("say"), boxes = seen("boxes"),
+    find = function(tab) return tab == 1 and { hint = "a sound", get = function() return words end, set = function(v) words = v end, enter = function(v) entered = v end } or nil end,
+    rows = function(tab) return { { text = "row " .. tab .. words, pic = "Interface\\Icons\\INV_Misc_Map_01" }, { text = "b", mark = "2" } } end } }
+  local def = D.defs["BiSFind:p"]
+  for _, s in ipairs({ { 260, 462 }, { 700, 460 } }) do
+    D.W, D.H, D.shape, D.page, def.tab, words, entered = s[1], s[2], T.DeckShape(s[1], s[2]), "BiSFind:p", 1, "", nil
+    D.Paint()
+    local e = D.frame.find
+    ok(find("find") and e and e.shown and e.hint.text == "a sound" and e.hint.shown, "the search line, with its hint", s[1])
+    ok(find("row").pic.shown and find("row").pic.tex:find("Map") and find("row").c.text == "" and find("row", 2).c.text == "2", "a row's picture stands where its mark would")
+    e.text = "bell" e.scripts.OnTextChanged(e, true)
+    ok(words == "bell" and not e.hint.shown, "typed: said to the page at once")
+    tick(2)
+    ok(find("row").a.text == "row 1bell", "and painted at the next beat", find("row").a.text)
+    e.scripts.OnEnterPressed(e) ok(entered == "bell", "Enter")
+    words = "" D.Paint() ok(e.text == "", "emptied by the page: empty")
+    def.tab = 2 D.Paint()
+    ok(not e.shown and not find("find") and find("row").a.text == "row 2", "a tab without one: gone")
+    ok(tabs.big == 2 and tabs.keys == 2 and tabs.text == 2 and tabs.hero == 2 and tabs.say == 2 and tabs.boxes == 2, "every part is told the tab")
+    def.tab = 1 D.Paint() ok(e.shown, "and back")
+    D.fight = true D.Paint() ok(not e.shown, "a fight: gone") D.fight = false
+    D.page = "home" D.Paint() ok(not e.shown, "home: gone")
+  end
+end
 -- every size, every page: it paints
 for _, page in ipairs({ "home", "switches", "BiSTools:bosses", "BiSTools:run", "BiSBroken:bad", "Nobody:here" }) do
   D.page = page

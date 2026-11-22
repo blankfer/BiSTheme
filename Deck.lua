@@ -12,7 +12,8 @@
       card = { prio = fn -> number | nil (nil = no card now), lines = fn -> { title, note, value, right, ink, hot = true, list = { { left, right }, ... } (a large card's own lines, three at most) },
                buttons = fn -> { { word, fn }, ... }, profiles = { Dungeon = true } },
       page = { title = fn, kicker = fn, boxes = fn -> { { word, value, ink } }, tabs = fn -> { "BOSSES", "QUESTS" },
-               rows = fn(tab) -> { { text, right, mark, ink, done, act = button } }, big = fn -> button, keys = fn -> { button },
+               rows = fn(tab) -> { { text, right, mark | pic = the game's picture, ink, done, act = button, side = button, less, more, tip } },
+               big = fn(tab) -> button, keys = fn(tab) -> { button }, find = fn(tab) -> { hint, get, set, enter } (a search line),
                text = fn -> string, say = fn -> string, tick = true (its words change by the second while it is open),
                hero = fn -> { art = "radio", big, small, left, right, frac 0-1, ticks, at (the needle), on, fn } (ours only: the picture on top),
                steps = fn -> { { phase, text, note, button, done } } },
@@ -431,8 +432,10 @@ function D.Model()
     m.steps = p.steps and D.Call(d, "steps", p.steps) or nil
     local tour = D.Tour(d)
     if tour then m.def, m.steps, m.kicker = tour, tour.steps, "first time here" end
-    m.big = p.big and D.Call(d, "big", p.big) or nil
-    m.keys = p.keys and D.Call(d, "keys", p.keys) or {}
+    m.tabs = p.tabs and D.Call(d, "tabs", p.tabs) or {}
+    m.tab = math.max(1, math.min(#m.tabs, d.tab or 1))
+    m.big = p.big and D.Call(d, "big", p.big, m.tab) or nil
+    m.keys = p.keys and D.Call(d, "keys", p.keys, m.tab) or {}
     if type(m.steps) == "table" and #m.steps > 0 then
       m.cur = D.StepAt(m.def, m.steps)
       local s = m.steps[m.cur]
@@ -440,15 +443,15 @@ function D.Model()
       m.view = { kind = "steps", steps = #m.steps, textLines = math.min(4, math.ceil(#tostring(s.text or "") / 34)), note = s.note and true or nil, keys = 0,
         skip = math.max(0, m.cur - 3 + (D.skip or 0)) }                 -- (the step you are on stays in sight)
     else
-      m.tabs = p.tabs and D.Call(d, "tabs", p.tabs) or {}
-      m.tab = math.max(1, math.min(#m.tabs, d.tab or 1))
-      m.boxes = p.boxes and D.Call(d, "boxes", p.boxes) or {}
+      m.boxes = p.boxes and D.Call(d, "boxes", p.boxes, m.tab) or {}
+      m.find = p.find and D.Call(d, "find", p.find, m.tab) or nil
+      if type(m.find) ~= "table" then m.find = nil end
       m.rows = p.rows and D.Call(d, "rows", p.rows, m.tab) or {}
-      m.text = p.text and D.Call(d, "text", p.text) or nil
-      m.hero = p.hero and D.Call(d, "hero", p.hero) or nil
+      m.text = p.text and D.Call(d, "text", p.text, m.tab) or nil
+      m.hero = p.hero and D.Call(d, "hero", p.hero, m.tab) or nil
       if p.tick then D.ticking = true end
-      m.say = p.say and D.Call(d, "say", p.say) or nil
-      m.view = { kind = "page", boxes = #m.boxes, tabs = #m.tabs, rows = #m.rows, keys = #m.keys, big = m.big and true or nil,
+      m.say = p.say and D.Call(d, "say", p.say, m.tab) or nil
+      m.view = { kind = "page", find = m.find and true or nil, boxes = #m.boxes, tabs = #m.tabs, rows = #m.rows, keys = #m.keys, big = m.big and true or nil,
         say = m.say and true or nil, hero = m.hero and true or nil, textLines = m.text and math.max(1, math.ceil(#m.text / D.Letters())) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
     end
   end
@@ -503,7 +506,7 @@ end
 local CLICK = { close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, hero = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
   link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1, cardout = 1, cardend = 1, less = 1, plus = 1, side = 1, morecards = 1 }
 local LOOK = {                                            -- kind -> ground colour, alpha
-  card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 },
+  card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 }, find = { "sunken", 1 },
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
   cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "card", 1 }, railapp = { "card", 1 },
@@ -735,9 +738,72 @@ function PAINT.tab(w, o, m)
   w.lit = onTab
   w.act = function() m.def.tab = o.i D.Dirty(true) end
 end
+--- A search line (page.find = fn(tab) -> { hint, get = fn -> words, set = fn(words), enter = fn(words) }): one EditBox a deck, laid
+--- over its box. Typing paints at the next beat; Enter and Esc let go; a fight takes it away.
+function PAINT.find(w, o, m)
+  local f, x = D.frame, m.find
+  local e = f.find
+  if not e then
+    e = CreateFrame("EditBox", nil, f)
+    f.find = e
+    e:SetAutoFocus(false)
+    e:SetMaxLetters(120)
+    e:SetTextInsets(7, 7, 0, 0)
+    e:SetFont(D.FONT, 13, "")
+    e:SetScript("OnTextChanged", function(self, user)
+      if self.quiet or user == false then return end
+      local words = self:GetText() or ""
+      if self.x and self.x.set then D.Call(self.def, "find", self.x.set, words) end
+      D.skip = 0
+      if self.hint then self.hint:SetShown(words == "") end
+      D.soon = true
+      D.Dirty()
+    end)
+    e:SetScript("OnEnterPressed", function(self)
+      local go, words = self.x and self.x.enter, self:GetText() or ""
+      self:ClearFocus()
+      if go then D.Call(self.def, "find", go, words) if self.def then D.Used(self.def) end end
+      D.Dirty(true)
+    end)
+    e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    e:SetScript("OnHide", function(self) self:ClearFocus() end)
+    e.hint = text(e, 12, "dim")
+    e.hint:SetPoint("LEFT", e, "LEFT", 7, 0)
+  end
+  e.def, e.x = m.def, x
+  local now = x.get and D.Call(m.def, "find", x.get) or ""
+  now = type(now) == "string" and now or ""
+  if (e:GetText() or "") ~= now and not (e.HasFocus and ask(e.HasFocus, e) == true) then
+    e.quiet = true
+    e:SetText(now)
+    e.quiet = nil
+  end
+  local r, g, b = rgb("ink")
+  e:SetTextColor(r, g, b, 1)
+  say(e.hint, x.hint or "search", 12, "dim")
+  e.hint:SetShown((e:GetText() or "") == "")
+  e:ClearAllPoints()
+  e:SetAllPoints(w)
+  e:SetFrameLevel((f:GetFrameLevel() or 1) + 6)
+  e:SetShown(not D.fight)
+  f.findAt = D.paints
+end
 function PAINT.row(w, o, m)
   local r = m.rows[o.i] or {}
-  say(w.c, r.mark or "", 11, "dim")
+  if r.pic then
+    if not w.pic then
+      w.pic = w:CreateTexture(nil, "ARTWORK")
+      w.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    if w.pic.art ~= r.pic then w.pic.art = r.pic w.pic:SetTexture(r.pic) end
+    w.pic:ClearAllPoints()
+    w.pic:SetPoint("LEFT", w, "LEFT", 3, 0)
+    w.pic:SetSize(18, 18)
+    if w.pic.SetDesaturated then w.pic:SetDesaturated(r.done and true or false) end
+    w.pic:SetAlpha(r.done and 0.55 or 1)
+    w.pic:Show()
+  end
+  say(w.c, r.pic and "" or r.mark or "", 11, "dim")
   say(w.a, r.text or "", 13, r.done and "dim" or "ink")
   say(w.b, r.right or "", 11, r.ink or "ink2", "RIGHT")
   w.act = press(m.def, r.act)
@@ -1141,6 +1207,7 @@ function D.Paint()
   local at = (D.page or "home") .. ":" .. tostring((D.defs[D.page or ""] or {}).tab)
   if D.skipAt ~= at then D.skipAt, D.skip = at, 0 end
   local m = D.Model()
+  D.paints = (D.paints or 0) + 1
   D.strong = (D.Store().easy or {}).strong and true or false
   D.Sky()
   local boxes = T.DeckLayout(m.view, D.W, D.H, D.Store().sw)
@@ -1210,6 +1277,7 @@ function D.Paint()
     end
   end
   for i = n + 1, #f.pieces do f.pieces[i]:Hide() end
+  if f.find and f.findAt ~= D.paints then f.find:Hide() end
   f.corner:SetFrameLevel((f:GetFrameLevel() or 1) + 8)
   f.corner:EnableMouse(not D.fight)
   D.dirty = nil
@@ -1354,7 +1422,8 @@ function D.Wake()
       if acc >= 0.05 then acc = 0 D.GripMove() end
       return
     end
-    if acc < D.BEAT then return end
+    if acc < (D.soon and 0.15 or D.BEAT) then return end     -- (D.soon: somebody is typing)
+    D.soon = nil
     acc = 0
     slow = slow + 1
     if slow >= 10 then slow = 0 D.dirty = true end         -- (the clock and the signs)

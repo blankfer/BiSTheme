@@ -18,6 +18,8 @@ local VIEWS = {
   homeBare = { kind = "home", cards = 0, apps = 3, dock = 0 },
   homeMany = { kind = "home", cards = 12, apps = 40, dock = 9 },
   bosses = { kind = "page", boxes = 3, tabs = 2, rows = 21, keys = 2, big = true, hero = true, say = true, strip = true, apps = 12 },
+  sounds = { kind = "page", find = true, boxes = 2, tabs = 3, rows = 60, keys = 2, big = true, apps = 12 },
+  alone = { kind = "page", find = true, boxes = 0, tabs = 2, rows = 0, keys = 0, textLines = 2, apps = 12 },
   short = { kind = "page", boxes = 0, tabs = 0, rows = 2, keys = 0, big = true, apps = 12 },
   text = { kind = "page", boxes = 4, tabs = 0, rows = 0, keys = 3, big = true, textLines = 9, hero = true, apps = 12 },
   full = { kind = "page", boxes = 6, tabs = 4, rows = 60, keys = 5, big = true, hero = true, say = true, strip = true, textLines = 3, apps = 30 },
