@@ -389,7 +389,7 @@ do
   ok(D.page == "home" and count("app") > 0, "home", D.page)
   local wc
   for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then wc = find("card", i) end end
-  ok(wc and wc.b.text:find(" / 9", 1, true), "a card says how far you are", wc and wc.b.text)
+  ok(wc and wc.b.text:find(" / 10", 1, true), "a card says how far you are", wc and wc.b.text)
   D.Hide() D.Show()
   ok(D.page == "home", "it never opens by itself again", D.page)
   click(wc)
@@ -483,6 +483,177 @@ do
     end
   end
   D.page = "home"
+end
+
+-- LIVE CARDS AND PULLING THEM OUT (Arn, 22 Nov: "they open farm app they click around in it it'll show up as a live card if it makes
+-- sense if they just looks at it and exit they just took a peek ... drag it out and pin it to their screen ... they close it and
+-- goes back to the phone, if they want to see more it opens the app on the phone")
+do
+  local over, down, guid, fired = false, true, "Player-1", {}
+  _G.UnitGUID = function() return guid end
+  _G.IsMouseButtonDown = function() return down end
+  assert(loadfile("DeckPins.lua"))()
+  local mob, stopped, n = nil, 0, 3
+  local farm = D.Register{ owner = "BiSFarm", key = "farm", name = "Farm", icon = "Fa", order = 2,
+    card = { when = "use", tick = true, alive = function() return mob ~= nil end, prio = function() return 6 end,
+      lines = function() return { "FARM", "", mob, n .. " up", "good" } end,
+      buttons = function() return { { word = "STOP", fn = function() mob = nil stopped = stopped + 1 end }, { word = "SPOTS", peek = true, fn = function() fired.spots = true end }, { word = "TARGET", macro = "/target x" } } end },
+    page = { tabs = function() return { "MOBS", "SPOTS" } end,
+      rows = function() return { { text = "Magra", act = { word = "farm", fn = function() mob = "Magra" end } }, { text = "Look", act = { word = "look", peek = true, fn = function() fired.look = true end } } } end,
+      keys = function() return { { word = "NOTHING", fn = function() end } } end } }
+  local def = D.defs["BiSFarm:farm"]
+  D.Store().apps = {} D.SetTheme("dark") D.page = "home" D.Show() D.Flip("portrait") D.Size(300, 700)
+  local function card(title) for i = 1, count("card") do local w = find("card", i) if w.c.text and w.c.text:find(title, 1, true) then return w end end end
+  ok(not card("FARM"), "never opened: no card")
+  D.Open("BiSFarm:farm") click(find("tab", 2)) click(find("tab", 1)) click(find("row", 2))
+  click(find("back"))
+  ok(fired.look and not card("FARM"), "opened, looked at, left: a peek, no card")
+  mob = "Magra"                                             -- (farmed already, from the old window)
+  D.Open("BiSFarm:farm") click(find("tab", 2)) click(find("row", 2)) click(find("back"))
+  ok(not card("FARM"), "a peek while it runs: still no card")
+  mob = nil
+  D.Open("BiSFarm:farm") click(find("key")) click(find("back"))
+  ok(not card("FARM"), "pressed something, but there is nothing to show: still none")
+  D.Open("BiSFarm:farm") click(find("row", 1))
+  ok(find("kicker").a.text:find("LIVE", 1, true), "used: the page says it is live", find("kicker").a.text)
+  click(find("back"))
+  ok(card("FARM") and card("FARM").a.text == "Magra" and card("FARM").b.text == "3 up", "used: it has a live card", card("FARM") and card("FARM").a.text)
+  n = 2 tick(2)
+  ok(card("FARM").b.text == "2 up", "its words follow the clock", card("FARM").b.text)
+  guid = "Player-2" D.Paint()
+  ok(not card("FARM"), "another character: not theirs")
+  guid = "Player-1" D.Paint()
+  ok(card("FARM"), "back: still live")
+  -- nothing of a card covers another piece of it
+  local function keysOf(kind) local out = {} for _, w in ipairs(D.frame.pieces) do if w.shown and w.kind == kind then out[#out + 1] = w end end return out end
+  ok(#keysOf("cardout") >= 1 and #keysOf("cardend") == 1, "OUT on every card, x on the one you made live", #keysOf("cardout") .. " " .. #keysOf("cardend"))
+  for _, kind in ipairs({ "cardout", "cardend" }) do for _, w in ipairs(keysOf(kind)) do ok(w.w >= 24 and w.h >= 22, "big enough to hit", w.w .. "x" .. w.h) end end
+  -- x ends it
+  click(keysOf("cardend")[1])
+  ok(not card("FARM") and mob == "Magra", "x: the card goes, the farming does not")
+  D.Open("BiSFarm:farm") click(find("row", 1)) click(find("back"))
+  ok(card("FARM"), "used again: there again")
+  -- dragged out
+  local w = card("FARM")
+  cx, cy = 500, 400
+  w.scripts.OnDragStart(w)
+  local pf = D.pinFrames["BiSFarm:farm"]
+  ok(pf and pf.shown and pf.isMoving and D.IsPinned("BiSFarm:farm"), "dragged: it comes out under the mouse")
+  ok(pf.parent == UIParent, "its own frame, not the deck's")
+  ok(w.shown and w.kind == "card", "the deck is not painted under the drag (the dragged piece must hear its end)")
+  w.scripts.OnDragStop(w)
+  ok(not pf.isMoving and D.Pins()["BiSFarm:farm"][4] == 12 and D.pinHeld == nil, "let go: it stays there, kept")
+  ok(card("FARM") and card("FARM").a.text == "On your screen" and #keysOf("cardout") >= 1, "the deck: a slot that says so, never twice", card("FARM") and card("FARM").a.text)
+  ok(pf.body.a.text == "Magra" and pf.b1.shown and pf.b1.a.text == "STOP" and pf.b2.a.text == "SPOTS" and not pf.b3.shown, "it shows the card and its plain buttons, not the secure one", pf.body.a.text)
+  click(pf.b2)
+  ok(fired.spots and mob == "Magra", "its buttons work")
+  n = 5 D.pinRoot.scripts.OnUpdate(D.pinRoot, 1.1)
+  ok(pf.body.b.text == "5 up", "it lives on its own beat", pf.body.b.text)
+  D.Hide()
+  ok(pf.shown, "the deck closed: it stays")
+  n = 4 D.pinRoot.scripts.OnUpdate(D.pinRoot, 1.1)
+  ok(pf.body.b.text == "4 up", "and lives on")
+  click(pf.open)
+  ok(D.frame.shown and D.page == "BiSFarm:farm", "OPEN: the app, on the deck")
+  D.page = "home" D.Hide()
+  click(pf.body)
+  ok(D.frame.shown and D.page == "BiSFarm:farm", "a click on it: the same")
+  -- a fight
+  GAME.fight = true fire("PLAYER_REGEN_DISABLED")
+  ok(pf.shown and pf.alpha == D.PIN_FIGHT and pf.mouse == false and pf.body.mouse == false and pf.x.mouse == false, "a fight: readable, clicks go through")
+  pf.scripts.OnDragStart(pf)
+  ok(not pf.isMoving, "and it does not move")
+  D.Store().sw.pinfight = false D.PinsPaint()
+  ok(not pf.shown, "the switch: gone in a fight")
+  GAME.fight = false fire("PLAYER_REGEN_ENABLED")
+  ok(pf.shown and pf.alpha == 1 and pf.mouse == true, "after it: back")
+  D.Store().sw.pinfight = nil
+  pf.scripts.OnDragStart(pf) ok(pf.isMoving, "dragged again")
+  GAME.fight = true fire("PLAYER_REGEN_DISABLED")
+  ok(not pf.isMoving and D.pinHeld == nil, "a pull ends the drag")
+  GAME.fight = false fire("PLAYER_REGEN_ENABLED")
+  pf.scripts.OnDragStart(pf) down = false D.pinRoot.scripts.OnUpdate(D.pinRoot, 0.1)
+  ok(not pf.isMoving and D.pinHeld == nil, "a button let go that nobody told us about: the drag ends") down = true
+  -- themes
+  D.SetTheme("light")
+  ok(pf.bg.r > 0.9 and pf.body.a.col < 0.2, "it wears the theme", pf.bg.r)
+  D.SetTheme("dark")
+  -- closed: back
+  D.page = "home" D.Show()
+  click(pf.x)
+  ok(not pf.shown and not D.IsPinned("BiSFarm:farm") and card("FARM") and card("FARM").a.text == "Magra", "x: back in the deck, still live")
+  -- OUT without dragging (the pad, the keyboard); dropped on the deck = back
+  click(keysOf("cardout")[1])
+  local any for id in pairs(D.Pins()) do any = id end
+  ok(any, "OUT does what the drag does", any)
+  D.PinBack(any)
+  w = card("FARM") w.scripts.OnDragStart(w)
+  over = true
+  D.frame.IsMouseOver = function() return over end
+  w.scripts.OnDragStop(w)
+  ok(not D.IsPinned("BiSFarm:farm") and not pf.shown, "dropped on the deck: back in it")
+  over = false
+  -- nothing left: the card and the pin go by themselves
+  D.PinOut("BiSFarm:farm")
+  ok(pf.shown, "out again")
+  click(pf.b1)
+  ok(stopped == 1 and not pf.shown and not D.IsPinned("BiSFarm:farm"), "STOP: nothing to show any more, the pin goes")
+  D.page = "home" D.Paint()
+  ok(not card("FARM"), "and the card")
+  -- nothing to say for now: hidden, its place kept
+  local rideUp = true
+  D.Register{ owner = "BiSRide", key = "ride", name = "Ride", order = 3, card = { prio = function() return rideUp and 5 or nil end, lines = function() return { "RIDES", "", "Boat", "0:58", "gold" } end }, page = { rows = function() return {} end } }
+  D.PinOut("BiSRide:ride")
+  local rf = D.pinFrames["BiSRide:ride"]
+  ok(rf.shown and not rf.b1.shown, "a card with no buttons")
+  rideUp = false D.pinRoot.scripts.OnUpdate(D.pinRoot, 1.1)
+  ok(not rf.shown and D.IsPinned("BiSRide:ride"), "nothing to say: it steps aside, its place is kept")
+  rideUp = true D.pinRoot.scripts.OnUpdate(D.pinRoot, 1.1)
+  ok(rf.shown, "and comes back")
+  -- switched off, and the next login
+  D.Off(true)
+  ok(not rf.shown and D.pinRoot.scripts.OnUpdate == nil, "the deck's tool off: nothing on the screen, nothing runs")
+  D.Off(false)
+  ok(rf.shown and D.pinRoot.scripts.OnUpdate ~= nil, "on: back")
+  rf:Hide() D.Hide()
+  fire("PLAYER_LOGIN")
+  ok(rf.shown and not D.frame.shown, "the next login: the pin is back, the deck stays closed")
+  D.PinBack("BiSRide:ride")
+  ok(D.pinRoot.scripts.OnUpdate == nil, "no pins: no beat")
+  ok(secureMade == 0, "still nothing secure", secureMade)
+  -- when a card may come: the Apps page
+  D.Show() D.Open("BiSDeck:apps") D.Size(400, 760)
+  click(find("tab", 2))
+  local function row(name) for i = 1, count("row") do local x = find("row", i) if x.a.text == name then return x end end end
+  ok(row("Farm") and row("Farm").b.text == "AFTER USE" and row("Ride").b.text == "BY ITSELF", "LIVE CARDS: when each may come", row("Farm") and row("Farm").b.text)
+  click(row("Ride")) ok(row("Ride").b.text == "NEVER", "a click: never")
+  D.page = "home" D.Paint() ok(not card("RIDES"), "and it is gone")
+  D.Open("BiSDeck:apps") click(row("Ride")) ok(row("Ride").b.text == "AFTER USE", "again: after use") click(row("Ride")) ok(row("Ride").b.text == "BY ITSELF" and D.Store().cardWhen["BiSRide:ride"] == nil, "and by itself again")
+  -- a long time
+  mob = "Magra" D.Used(def) ok(D.IsLive(def), "live")
+  GAME.now = GAME.now + D.LIVE_KEEP + 10
+  ok(not D.IsLive(def), "half a day later: not any more")
+  -- - and + on a row
+  local val = 5
+  D.Register{ owner = "BiSStep", key = "s", name = "Step", page = { rows = function() return { { text = "radius", right = tostring(val), less = { word = "-", fn = function() val = val - 1 end }, more = { word = "+", fn = function() val = val + 1 end } } } end } }
+  D.Open("BiSStep:s")
+  click(find("plus")) click(find("plus")) click(find("less"))
+  ok(val == 6 and find("row").b.text == "6", "- and +", val)
+  ok(find("less").w >= 24 and find("plus").w >= 24, "big enough")
+  -- a tool that is off is in the Apps page, not on home
+  local toolOn = false
+  D.Register{ owner = "BiSQuiet", key = "q", name = "Quiet", order = 1, quietOff = true, about = "It is quiet.", state = function() return toolOn and "on" or "off" end, turnOn = { word = "TURN ON", fn = function() toolOn = true end }, page = { rows = function() return {} end } }
+  D.page = "home" D.Paint()
+  local function icon(name) for i = 1, count("app") do if find("app", i).c.text == name then return true end end end
+  ok(not icon("Quiet"), "off: not on home")
+  D.Open("BiSDeck:apps") click(find("tab", 1))
+  ok(row("Quiet") and row("Quiet").b.text == "OFF", "but in the Apps page")
+  click(row("Quiet"))
+  ok(D.page == "BiSQuiet:q" and find("big").a.text == "TURN ON", "a click: what it is, TURN ON")
+  click(find("big")) D.page = "home" D.Paint()
+  ok(icon("Quiet"), "on: on home")
+  for _, id in ipairs({ "BiSFarm:farm", "BiSRide:ride", "BiSStep:s", "BiSQuiet:q" }) do D.defs[id] = nil end
+  D.sorted = nil D.page = "home"
 end
 
 -- THE THEMES (Arn, 22 Nov: the clean dark one first; Ryan-Gosling-mode is one you turn on; "other people can change the theme")

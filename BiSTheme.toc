@@ -13,6 +13,7 @@ Console.lua
 Pad.lua
 DeckLayout.lua
 Deck.lua
+DeckPins.lua
 DeckApps.lua
 Options.lua
 Minimap.lua

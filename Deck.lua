@@ -15,6 +15,9 @@
                rows = fn(tab) -> { { text, right, mark, ink, done, act = button } }, big = fn -> button, keys = fn -> { button },
                text = fn -> string, say = fn -> string, steps = fn -> { { phase, text, note, button, done } } },
       dock = { word = "FIND", fn = fn, hot = fn }, badge = fn -> number, store = fn -> table (its own saved table),
+      card.when = "news" (default: it comes by itself when prio answers) | "use" (only after you did something in the app - opening
+        it and leaving is a peek), card.alive = fn -> is there still something to show?, card.tick = true (its words change by
+        the second); prio / lines are handed `true` when the card is pulled out; a button with peek = true is not "use"
       state = fn -> "on" | "off" | "missing" (default on), about = words, turnOn = button,   -- not on: gray, opens what it is
       open = fn (the icon runs this instead of a page), dev = true (a tool of ours: gray, last), hidden = true (no icon),
       page.tour = { { text, note }, ... }                  -- shown once, the first time the page is opened
@@ -178,6 +181,58 @@ function D.Save()
   end
 end
 
+-- WHO IS LIVE (Arn, 22 Nov: "they open farm app they click around in it it'll show up as a live card if it makes sense if they
+-- just looks at it and exit they just took a peek"): an app whose card is "use" gets its card when you press something that DOES
+-- something in it, and keeps it until x, until the app says there is nothing left, or a long time. Per character.
+D.LIVE_KEEP = 12 * 3600
+function D.Mine()
+  local st = D.Store()
+  st.mine = type(st.mine) == "table" and st.mine or {}
+  local who = ask(UnitGUID, "player")
+  who = type(who) == "string" and who or "all"
+  st.mine[who] = type(st.mine[who]) == "table" and st.mine[who] or {}
+  local m = st.mine[who]
+  m.live = type(m.live) == "table" and m.live or {}
+  return m
+end
+D.WHENS = { "use", "news", "off" }
+--- When this card may show: your own pick (the Apps page), else what the app asked for.
+function D.When(def)
+  local st = D.Store()
+  local mine = type(st.cardWhen) == "table" and st.cardWhen[def.id]
+  return mine or (def.card and def.card.when) or "news"
+end
+function D.SetWhen(def, when)
+  local st = D.Store()
+  st.cardWhen = type(st.cardWhen) == "table" and st.cardWhen or {}
+  st.cardWhen[def.id] = when ~= ((def.card and def.card.when) or "news") and when or nil
+  D.Save()
+end
+function D.IsLive(def)
+  if not def.card then return false end
+  local when = D.When(def)
+  if when ~= "use" then return when == "news" end
+  local live = D.Mine().live
+  local at = live[def.id]
+  if not at then return false end
+  local now = ask(GetServerTime) or 0
+  if (def.card.alive and not D.Call(def, "alive", def.card.alive)) or (type(at) == "number" and now - at > D.LIVE_KEEP) then
+    live[def.id] = nil
+    if D.PinBack and D.IsPinned(def.id) then D.Pins()[def.id] = nil end
+    return false
+  end
+  return true
+end
+--- Something was DONE in this app: from now on it has a card, if it has anything to show.
+function D.Used(def)
+  if not (def and def.card and D.defs[def.id] == def) or D.When(def) ~= "use" then return false end
+  if def.card.alive and not D.Call(def, "alive", def.card.alive) then return false end
+  D.Mine().live[def.id] = ask(GetServerTime) or 0
+  D.Save()
+  return true
+end
+function D.EndLive(def) D.Mine().live[def.id] = nil D.Save() D.Dirty(true) end
+
 -- THE PROFILE -------------------------------------------------------------------------------------------------------
 
 --- Which profile these facts mean. Pure: the test asks it everything.
@@ -261,6 +316,7 @@ end
 --- Is this icon on the home screen? (hidden by hand, or the switch for what you do not have)
 function D.Shown(def, state)
   local st = D.Store()
+  if def.quietOff and state == "off" then return st.apps[def.id] == true end        -- (a tool that is off: the Apps page has it)
   if st.apps[def.id] == false then return false end
   return not (state == "missing" and st.sw.missing == false)
 end
@@ -274,7 +330,9 @@ function D.Cards()
   local st, out = D.Store(), {}
   for i, d in ipairs(sorted()) do
     local c = d.card
-    if c and st.apps[d.id] ~= false and not (c.profiles and not c.profiles[D.profile or ""]) then
+    if c and d.card and D.IsPinned and D.IsPinned(d.id) and not d.parked then
+      out[#out + 1] = { def = d, p = -0.5, i = i, slot = true, lines = { (d.name or d.key):upper(), "", "On your screen", "", "dim" }, buttons = {} }
+    elseif c and st.apps[d.id] ~= false and D.IsLive(d) and not (c.profiles and not c.profiles[D.profile or ""]) then
       local p = D.Call(d, "prio", c.prio or 1)
       local l = type(p) == "number" and D.Call(d, "lines", c.lines) or nil
       if d.parked then out[#out + 1] = { def = d, p = -1, i = i, lines = { d.name or d.key, "", "stopped after errors", "", "dim" } }
@@ -294,7 +352,7 @@ D.SWITCHES = {
   -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
   { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
   { "THEME", { { "dark", "Dark", theme = true }, { "drive", "Night drive", theme = true }, { "light", "Light", theme = true }, { "contrast", "High contrast", theme = true } } },
-  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" }, { "missing", "Addons you do not have" } } },
+  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
   { "EVERYWHERE", { { "code", "Faint code line" } } },
@@ -306,6 +364,7 @@ function D.Model()
   m.apps = shownApps()
   if m.page == "home" then
     m.cards, m.dock = D.Cards(), dockList()
+    for _, c in ipairs(m.cards) do if c.def.card.tick and not c.slot then D.ticking = true end end
     m.view = { kind = "home", cards = #m.cards, apps = #m.apps, dock = #m.dock, appSkip = D.appSkip }
     m.title, m.kicker = "BiS>", (D.profile or "") .. (D.Store().pin and " - pinned" or "")
   elseif m.page == "switches" then
@@ -331,6 +390,7 @@ function D.Model()
     if not p or d.parked then D.page = "home" if d and d.parked then d.parkedSaid = true end return D.Model() end
     m.def = d
     m.title, m.kicker = D.Call(d, "title", p.title) or d.name, D.Call(d, "kicker", p.kicker) or (d.name or ""):upper()
+    if d.card and D.When(d) == "use" and D.IsLive(d) then m.kicker = tostring(m.kicker) .. " - live" end
     m.steps = p.steps and D.Call(d, "steps", p.steps) or nil
     local tour = D.Tour(d)
     if tour then m.def, m.steps, m.kicker = tour, tour.steps, "first time here" end
@@ -402,12 +462,12 @@ end
 -- THE SKIN ----------------------------------------------------------------------------------------------------------
 
 local CLICK = { close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
-  link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1 }
+  link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1, cardout = 1, cardend = 1, less = 1, plus = 1 }
 local LOOK = {                                            -- kind -> ground colour, alpha
   card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 },
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
-  cardbtn = { "sunken", 1 }, grip = { "line", 0 }, app = { "line", 0 }, railapp = { "line", 0 },
+  cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, grip = { "line", 0 }, app = { "line", 0 }, railapp = { "line", 0 },
 }
 
 local function text(parent, size, colour)
@@ -445,6 +505,9 @@ local function piece(parent)
     end
   end)
   w:SetScript("OnLeave", function(self) self.wash:Hide() if GameTooltip then GameTooltip:Hide() end end)
+  w:RegisterForDrag("LeftButton")                          -- (a card is pulled out by dragging it: DeckPins.lua)
+  w:SetScript("OnDragStart", function(self) if self.dragId and not D.fight and D.PinOut then D.PinOut(self.dragId, true) end end)
+  w:SetScript("OnDragStop", function() if D.PinDrop then D.PinDrop() end end)
   w:SetScript("OnClick", function(self) if self.act and not D.fight then self.act() end end)
   return w
 end
@@ -483,7 +546,14 @@ end
 --- A button an addon handed in: what a click does, and whether it may (a secure one waits for the overlay).
 local function press(def, b)
   if type(b) ~= "table" then return nil end
-  if type(b.fn) == "function" then return function() D.Call(def, "button", b.fn) D.Dirty(true) end end
+  if type(b.fn) == "function" then
+    return function()
+      D.Call(def, "button", b.fn)
+      if not b.peek then D.Used(def) end
+      if D.PinsPaint then D.PinsPaint() end
+      D.Dirty(true)
+    end
+  end
   return nil
 end
 D.Press = press
@@ -519,6 +589,7 @@ function PAINT.card(w, o, m)
   say(w.a, l[3] or "", 16, "ink")
   say(w.b, l[4] or "", 15, l[5] or "ink2", "RIGHT")
   w.hot = l.hot
+  if c and not c.slot and D.PinOut then w.dragId = c.def.id end
   if c and (c.def.page or c.def.open) then w.act = function() D.Open(c.def.id) end end
 end
 function PAINT.app(w, o, m)
@@ -569,6 +640,7 @@ function PAINT.row(w, o, m)
   say(w.b, r.right or "", 11, r.ink or "ink2", "RIGHT")
   w.act = press(m.def, r.act)
   w.tip = r.tip
+  w.keys = (r.less or r.more) and true or nil
 end
 local function button(w, b, def, size)
   local sec = D.IsSecure(b)
@@ -640,13 +712,15 @@ function PAINT.slider(w, o)
   say(w.b, o.i == 1 and (math.floor((st.scale or D.SCALE) * 100 + 0.5) .. "%") or math.floor(D.H), 12, "ink", "RIGHT")
 end
 
+D.Kit = { piece = piece, say = say, rgb = rgb }            -- (DeckPins.lua draws with the same)
+
 --- Where a piece's words stand, by what it is.
 local function words(w, o)
   w.a:ClearAllPoints() w.b:ClearAllPoints() w.c:ClearAllPoints()
   w.a:SetJustifyV("MIDDLE")
   if o.kind == "card" then
     local top = o.btn and 22 or 0
-    w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 8, -5) w.c:SetPoint("TOPRIGHT", w, "TOPRIGHT", -8, -5)
+    w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 8, -5) w.c:SetPoint("TOPRIGHT", w, "TOPRIGHT", -64, -5)
     w.b:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -8, 5 + top)
     w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 8, 5 + top) w.a:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -o.w * 0.38, 5 + top)
   elseif o.kind == "box" then
@@ -656,7 +730,7 @@ local function words(w, o)
   elseif o.kind == "railapp" then
     w.a:SetPoint("CENTER", w, "CENTER", 0, 0) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -4, -3) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 0)
   elseif o.kind == "row" or o.kind == "step" then
-    w.c:SetPoint("LEFT", w, "LEFT", 7, 0) w.b:SetPoint("RIGHT", w, "RIGHT", -6, 0)
+    w.c:SetPoint("LEFT", w, "LEFT", 7, 0) w.b:SetPoint("RIGHT", w, "RIGHT", w.keys and -58 or -6, 0)
     w.a:SetPoint("LEFT", w, "LEFT", 24, 0) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
   elseif o.kind == "text" or o.kind == "steptext" then
     w.a:SetJustifyV("TOP")
@@ -753,11 +827,16 @@ function D.Skin()
   if not f then return end
   f.bg:SetColorTexture(rgb("ground"))
   f.bg:SetAlpha(0.97)
-  for _, w in ipairs(f.pieces) do
-    w.a.tone, w.b.tone, w.c.tone = nil, nil, nil
-    local r, g, b = rgb("accent")
-    w.wash:SetColorTexture(r, g, b, 0.22)
+  local function wear(list)
+    for _, w in ipairs(list) do
+      w.a.tone, w.b.tone, w.c.tone = nil, nil, nil
+      local r, g, b = rgb("accent")
+      w.wash:SetColorTexture(r, g, b, 0.22)
+    end
   end
+  wear(f.pieces)
+  for _, p in pairs(D.pinFrames or {}) do wear(p.pieces) end
+  if D.PinsPaint then D.PinsPaint() end
   D.Sky()
 end
 D.SKY_BAND = 8
@@ -796,10 +875,44 @@ function D.Sky()
   for i = n + 1, #f.sky do f.sky[i]:Hide() end
 end
 
+--- A row's - and + (an option with steps): two keys at its right end, the value left of them.
+function D.RowKeys(put, o, m, f)
+  local r = m.rows[o.i]
+  if not (r and (r.less or r.more)) then return end
+  for k, b in ipairs({ r.less, r.more }) do
+    local w = put({ kind = k == 1 and "less" or "plus", x = o.x + o.w - (k == 1 and 52 or 26), y = o.y, w = 24, h = o.h })
+    w:SetFrameLevel((f:GetFrameLevel() or 1) + 4)
+    say(w.a, k == 1 and "-" or "+", 14, "accent", "CENTER")
+    w.act = press(m.def, b)
+    w.tip = b.tip
+    w:EnableMouse((w.act or w.tip) and not D.fight and true or false)
+  end
+end
+--- A card's own keys, at its top right: OUT (onto the screen; the same as dragging it), BACK for one that is out, x for one
+--- that is live because you used its app.
+function D.CardKeys(put, o, m, f)
+  local c = m.cards[o.i]
+  if not c or not D.PinOut then return end
+  local x = o.x + o.w - 3
+  local function key(kind, words, wide, fn, tip)
+    x = x - wide
+    local w = put({ kind = kind, x = x, y = o.y + 2, w = wide, h = 22 })
+    x = x - 3
+    w:SetFrameLevel((f:GetFrameLevel() or 1) + 4)
+    say(w.a, words, 11, "ink2", "CENTER")
+    w.act, w.tip = fn, tip
+    w:EnableMouse(not D.fight)
+  end
+  if c.slot then return key("cardout", "BACK", 40, function() D.PinBack(c.def.id) end, "Back into the deck") end
+  if D.When(c.def) == "use" then key("cardend", "x", 24, function() D.EndLive(c.def) end, "Done with it") end
+  key("cardout", "OUT", 30, function() D.PinOut(c.def.id) end, "Onto your screen (or drag the card there)")
+end
+
 --- Draw the deck: the model, its layout, a piece for each box.
 function D.Paint()
   local f = D.frame
-  if not (f and f:IsShown()) then return 0 end
+  if not (f and f:IsShown()) or D.pinHeld then return 0 end
+  D.ticking = nil
   local at = (D.page or "home") .. ":" .. tostring((D.defs[D.page or ""] or {}).tab)
   if D.skipAt ~= at then D.skipAt, D.skip = at, 0 end
   local m = D.Model()
@@ -811,7 +924,7 @@ function D.Paint()
     n = n + 1
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
-    w.act, w.tip, w.hot, w.lit = nil, nil, nil, nil
+    w.act, w.tip, w.hot, w.lit, w.dragId, w.keys = nil, nil, nil, nil, nil, nil
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
     w.a:SetWordWrap(false)
@@ -837,6 +950,8 @@ function D.Paint()
   end
   for _, o in ipairs(boxes) do
     put(o)
+    if o.kind == "row" then D.RowKeys(put, o, m, f) end
+    if o.kind == "card" then D.CardKeys(put, o, m, f) end
     if o.kind == "card" and o.btn then
       local c = m.cards[o.i]
       local bs = c and c.buttons or {}
@@ -882,6 +997,7 @@ function D.GripEnd() if D.grip then D.grip = nil D.Save() D.Dirty() end end
 --- Something changed: painted at the next beat (`now` = at once), only while shown.
 function D.Dirty(now)
   D.dirty = true
+  if D.pinHeld then return end                             -- (a card is under the mouse: see DeckPins.lua)
   if now and D.frame and D.frame:IsShown() then D.Paint() end
 end
 
@@ -984,14 +1100,16 @@ function D.Wake()
     end
     if acc < D.BEAT then return end
     acc = 0
-    if D.dirty then D.Paint() end
+    if D.dirty or D.ticking then D.Paint() end
   end)
 end
 function D.Sleep() D.GripEnd() if D.frame then D.frame:SetScript("OnUpdate", nil) end end
 
 --- A fight: barely there and the mouse goes through - legal at any moment, the skin is plain.
 function D.Fight(on)
+  if on and D.PinDrop then D.PinDrop() end                 -- (a held card stays where it is)
   D.fight = on and true or false
+  if D.PinsPaint then D.PinsPaint() end
   local f = D.frame
   if not f then return end
   if on then D.DragEnd() D.GripEnd() D.Focus(false) end
@@ -1009,6 +1127,7 @@ function D.OnEvent(event)
   if event == "PLAYER_LOGIN" then
     T.DECK_LOGIN = true
     if D.Store().open then D.Show() end
+    if D.PinsPaint and not D.Store().off then D.PinsPaint() end
   elseif event == "PLAYER_REGEN_DISABLED" then D.Fight(true)
   elseif event == "PLAYER_REGEN_ENABLED" then D.Fight(false) D.Look() D.Dirty()
   elseif event == "PLAYER_LOGOUT" then if D.store then D.Save() end

@@ -71,7 +71,10 @@ function D.AppRows()
   local out = {}
   for i, x in ipairs(D.Icons()) do
     local d, s = x[1], x[2]
-    if d.id ~= "BiSDeck:apps" then
+    if d.id ~= "BiSDeck:apps" and s == "off" and d.quietOff then
+      -- a tool that is off: what it is, and TURN ON
+      out[#out + 1] = { mark = "-", text = d.name or d.key, right = "OFF", ink = "dim", done = true, tip = "Click: what it is, and a button to turn it on", act = { word = "look", peek = true, fn = function() D.Open(d.id) end } }
+    elseif d.id ~= "BiSDeck:apps" then
       local is = D.Shown(d, s)
       out[#out + 1] = { mark = is and "v" or "-", text = (d.name or d.key) .. (WORD[s] and (" - " .. WORD[s]) or ""), right = is and "SHOWN" or "HIDDEN", ink = is and "good" or "dim",
         done = not is, tip = is and "Click: take it off the home screen" or "Click: put it on the home screen",
@@ -83,6 +86,22 @@ function D.AppRows()
           end
           D.Save()
         end } }
+    end
+  end
+  return out
+end
+
+local WHEN = { use = "AFTER USE", news = "BY ITSELF", off = "NEVER" }
+local WHEN_TIP = { use = "Comes when you did something in its app. Click: when it has news", news = "Comes by itself when it has something to say. Click: never", off = "No live card. Click: after you used its app" }
+--- Every card there is, and when it may come.
+function D.CardRows()
+  local out = {}
+  for _, x in ipairs(D.Icons()) do
+    local d = x[1]
+    if d.card and x[2] ~= "off" and x[2] ~= "missing" then
+      local w = D.When(d)
+      out[#out + 1] = { mark = w == "off" and "-" or "v", text = d.name or d.key, right = WHEN[w], ink = w == "off" and "dim" or "good", done = w == "off", tip = WHEN_TIP[w],
+        act = { word = "next", fn = function() D.SetWhen(d, w == "use" and "news" or w == "news" and "off" or "use") end } }
     end
   end
   return out
@@ -109,6 +128,7 @@ function D.Welcome()
     { phase = "EASIER", text = "Read aloud and stronger words are first in the switches. The gear opens them.", done = w.easy, button = { word = "OPEN THE SWITCHES", fn = function() wel().easy = true D.Save() D.page = "switches" end } },
     { phase = "THEME", text = "Dark is the clean one. Light, high contrast and night drive are in the switches.", done = w.theme or st.theme ~= nil, button = { word = "PICK A THEME", fn = function() wel().theme = true D.Save() D.page = "switches" end } },
     { phase = "ICONS", text = "Gray icons are off or not installed: click one to read what it is. Hide any you do not want.", done = w.icons, button = { word = "OPEN APPS", fn = function() wel().icons = true D.Save() D.page = "BiSDeck:apps" end } },
+    { phase = "LIVE CARDS", text = "Do something in an app and it gets a live card. Drag the card onto your screen; its x puts it back.", done = w.cards or (D.Pins and next(D.Pins()) ~= nil), button = got("cards") },
     { phase = "PROFILES", text = "The deck follows you: leveling, dungeon, raid night, town, PvP. What matters there comes first.", done = w.profiles, button = got("profiles") },
   }
   if T.PadOn and ask(T.PadOn) then
@@ -154,7 +174,7 @@ function D.Apps()
       end
     end
     D.Register{ owner = "BiSDeck", key = "apps", name = "Apps", icon = "+", order = 99,
-      page = { title = function() return "Apps" end, kicker = function() return "shown on home" end, rows = D.AppRows,
+      page = { title = function() return "Apps" end, kicker = function() return "shown on home" end, tabs = function() return { "ICONS", "LIVE CARDS" } end, rows = function(tab) return tab == 2 and D.CardRows() or D.AppRows() end,
         keys = function() return { { word = "WELCOME", fn = D.Replay, tip = "The welcome and the first-time words again" } } end } }
     D.Register{ owner = "BiSDeck", key = "welcome", name = "Welcome", hidden = true, order = 98,
       card = { prio = function() if wel().over or wel().no then return nil end return 2 end,
