@@ -11,6 +11,8 @@
 BiSTheme.lua
 Console.lua
 Pad.lua
+DeckLayout.lua
+Deck.lua
 Options.lua
 Minimap.lua
 Settings.lua
