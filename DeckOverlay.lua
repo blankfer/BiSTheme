@@ -1,7 +1,7 @@
 --[[
   BiSTheme / DeckOverlay.lua  --  THE BUTTONS THAT CAST (22 Nov 2026).
 
-  A key, a row or the big button that says { word, macro = } / { word, spell = [, bag, slot] } / { word, item = } is SECURE: only a
+  A key, a row or the big button that says { word, macro = } / { word, spell = [, bag, slot | , unit] } / { word, item = } is SECURE: only a
   secure button may do it. The deck itself is plain (it resizes, flips and dims in a fight), so the secure buttons stand on their
   own root on UIParent, laid over the drawn ones BY NUMBERS - never anchored to the deck, never a child of it (a secure button
   anchored to our frame protects it: BiS Tools 1.7.0). The root is hidden by the client itself in a fight ([combat] hide) and
@@ -51,13 +51,14 @@ local function root()
 end
 
 -- what a button does, as attributes; the same words = the same button
-local ATTR = { "type1", "macrotext1", "spell1", "item1", "target-bag", "target-slot" }
+local ATTR = { "type1", "macrotext1", "spell1", "item1", "target-bag", "target-slot", "unit" }
 local function what(sec)
   local a = {}
   if sec.macro then a.type1, a.macrotext1 = "macro", tostring(sec.macro)
   elseif sec.spell then
     a.type1, a.spell1 = "spell", sec.spell
     if sec.bag and sec.slot then a["target-bag"], a["target-slot"] = sec.bag, sec.slot end
+    if sec.unit then a.unit = sec.unit end
   elseif sec.item then a.type1, a.item1 = "item", type(sec.item) == "number" and "item:" .. sec.item or tostring(sec.item) end
   local key = ""
   for _, k in ipairs(ATTR) do key = key .. "|" .. tostring(a[k]) end

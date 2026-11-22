@@ -1370,8 +1370,10 @@ do
   go = { word = "FIND", macro = "/targetexact Sneed", after = function() after = after + 1 end }
   D.Paint() big.scripts.PostClick(big, "LeftButton", true) big.scripts.PostClick(big, "LeftButton", false)
   ok(after == 1, "what comes after it: once a click", after)
+  go = { word = "GIVE", spell = "Innervate", unit = "party2" }
+  D.Paint() ok(big.attr.spell1 == "Innervate" and big.attr.unit == "party2", "a spell on a groupmate")
   go = { word = "NEXT", spell = "Disenchant", bag = 0, slot = 4, ok = function() return bagOk end }
-  D.Paint() ok(big.attr["target-bag"] == 0 and big.attr["target-slot"] == 4 and big.attr.spell1 == "Disenchant", "a spell on an item in your bags")
+  D.Paint() ok(big.attr.unit == nil and big.attr["target-bag"] == 0 and big.attr["target-slot"] == 4 and big.attr.spell1 == "Disenchant", "a spell on an item in your bags")
   big.scripts.PreClick(big) ok(big.attr.type1 == "spell", "still that item: it goes")
   bagOk = false big.scripts.PreClick(big) ok(big.attr.type1 == nil, "the item moved: the click does nothing")
   D.Paint() ok(big.attr.type1 == "spell", "and the next paint aims again") bagOk = true

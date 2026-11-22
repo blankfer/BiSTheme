@@ -58,7 +58,7 @@ for id, name in pairs({
   ["BiSTools:tool-social"] = "INV_Letter_15", ["BiSTools:tool-bg"] = "INV_BannerPVP_01", ["BiSTools:tool-map"] = "INV_Misc_Map_01",
   ["BiSTools:tool-party"] = "Spell_Holy_PrayerOfHealing", ["BiSTools:tool-summon"] = "Spell_Holy_PrayerOfHealing", ["BiSTools:tool-sounds"] = "INV_Misc_Bell_01", ["BiSTools:tool-xp"] = "INV_Misc_Rune_01",
   ["BiSTools:tool-disenchant"] = "INV_Enchant_Disenchant", ["BiSTools:tool-processing"] = "INV_Misc_Gear_01", ["BiSTools:tool-codex"] = "INV_Misc_Book_11",
-  ["BiSTools:tool-alts"] = "INV_Misc_GroupLooking", ["BiSTools:tool-combo"] = "Spell_Nature_Lightning", ["BiSTools:tool-windfury"] = "Spell_Nature_Cyclone",
+  ["BiSTools:tool-alts"] = "INV_Misc_GroupLooking", ["BiSTools:tool-combo"] = "Spell_Nature_LightningShield", ["BiSTools:tool-innervate"] = "Spell_Nature_Lightning", ["BiSTools:tool-windfury"] = "Spell_Nature_Cyclone",
   ["BiSShell:fm"] = "INV_Misc_Drum_01", ["BiSShell:play"] = "Ability_Warrior_Challange", ["BiSShell:games"] = "INV_Misc_Dice_01",
   ["BiSTools:app"] = "INV_Misc_Wrench_01", ["BiSHealing:app"] = "Spell_Nature_HealingWaveGreater", ["BiSMemories:app"] = "INV_Misc_Spyglass_03",
   ["BiSGuild:app"] = "INV_Shirt_GuildTabard_01", ["BiSGamba:app"] = "INV_Misc_Coin_02", ["Nebbinator:app"] = "INV_Misc_GroupNeedMore", ["BiSShell:app"] = "Spell_Holy_PowerWordShield",
