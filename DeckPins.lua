@@ -27,7 +27,7 @@ local function ask(fn, ...)
   local ok, a = pcall(fn, ...)
   if ok and not (issecretvalue and issecretvalue(a)) then return a end
 end
-D.PIN_W, D.PIN_H, D.PIN_BTN = 230, 56, 24                 -- the card, and its row of buttons
+D.PIN_W, D.PIN_H, D.PIN_BTN, D.PIN_LINE = 230, 56, 24, 16  -- the card, its row of buttons, one of its own lines
 D.PIN_BEAT, D.PIN_FIGHT = 1, 0.6
 D.pinFrames = D.pinFrames or {}
 
@@ -57,7 +57,7 @@ local function build(id)
   f:SetScript("OnDragStop", function() D.PinDrop() end)
   f.bg = f:CreateTexture(nil, "BACKGROUND")
   f.bg:SetAllPoints(f)
-  for i, key in ipairs({ "body", "open", "x", "b1", "b2", "b3" }) do
+  for i, key in ipairs({ "body", "open", "x", "b1", "b2", "b3", "l1", "l2", "l3" }) do
     local w = K.piece(f)
     f[key], f.pieces[i] = w, w
     w:SetFrameLevel((f:GetFrameLevel() or 1) + (key == "body" and 1 or 3))
@@ -104,7 +104,11 @@ function D.PinPaint(id)
   f.bg:SetColorTexture(rgb("card"))
   local bs = {}
   for _, b in ipairs(D.Call(def, "buttons", def.card.buttons) or {}) do if type(b) == "table" and type(b.fn) == "function" and #bs < 3 then bs[#bs + 1] = b end end
-  local W, H = D.PIN_W, D.PIN_H + (#bs > 0 and D.PIN_BTN + 4 or 0)
+  -- (its own lines too - who timed the ride, what comes next: Arn, 22 Nov "these card still want the info of who its syncing from")
+  local list = type(l.list) == "table" and l.list or {}
+  local nl = math.min(3, #list)
+  local btnY = D.PIN_H + nl * D.PIN_LINE + (nl > 0 and 4 or 0)
+  local W, H = D.PIN_W, btnY + (#bs > 0 and D.PIN_BTN + 4 or 0)
   f:SetSize(W, H)
   for _, w in ipairs(f.pieces) do w.act, w.tip = nil, nil w.bg:SetColorTexture(0, 0, 0, 0) end
   local w = f.body
@@ -119,6 +123,21 @@ function D.PinPaint(id)
   w.act = (def.page or def.open) and function() D.Open(id) end or nil
   local r, g, b = rgb(l.hot and "gold" or "line")
   w.bar:SetColorTexture(r, g, b, 1) w.bar:Show()
+  for i = 1, 3 do
+    local p, x = f["l" .. i], i <= nl and list[i]
+    if x then
+      x = type(x) == "table" and x or { x }
+      put(f, p, 9, D.PIN_H - 2 + (i - 1) * D.PIN_LINE, W - 18, D.PIN_LINE)
+      p.a:ClearAllPoints() p.b:ClearAllPoints()
+      p.b:SetPoint("RIGHT", p, "RIGHT", 0, 0)
+      p.a:SetPoint("LEFT", p, "LEFT", 0, 0) p.a:SetPoint("RIGHT", p.b, "LEFT", -6, 0)
+      say(p.b, x[2] or "", 12, "ink2", "RIGHT") say(p.c, "", 10)
+      K.fit(p.a, x[1] or "", { 12, 11, 10, 9 }, "ink2", nil, W - 26 - (K.wide(p.b) or 0))
+      p.bar:Hide()
+      p:EnableMouse(false)
+      p:Show()
+    else p:Hide() end
+  end
   local function key(p, words, x, y, wide, high, fn, tip)
     put(f, p, x, y, wide, high)
     p.a:ClearAllPoints() p.a:SetPoint("LEFT", p, "LEFT", 2, 0) p.a:SetPoint("RIGHT", p, "RIGHT", -2, 0)
@@ -135,7 +154,7 @@ function D.PinPaint(id)
   local each = #bs > 0 and (W - 18 - (#bs - 1) * 4) / #bs or 0
   for i = 1, 3 do
     local p = f["b" .. i]
-    if bs[i] then key(p, bs[i].word or "", 9 + (i - 1) * (each + 4), D.PIN_H, each, D.PIN_BTN, D.Press(def, bs[i]), bs[i].tip) else p:Hide() end
+    if bs[i] then key(p, bs[i].word or "", 9 + (i - 1) * (each + 4), btnY, each, D.PIN_BTN, D.Press(def, bs[i]), bs[i].tip) else p:Hide() end
   end
   w:EnableMouse(not D.fight)
   f:EnableMouse(not D.fight)

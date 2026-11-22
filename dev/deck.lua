@@ -696,6 +696,16 @@ do
   w.scripts.OnDragStart(w)
   local pf = D.pinFrames["BiSFarm:farm"]
   ok(pf and pf.shown and pf.isMoving and D.IsPinned("BiSFarm:farm"), "dragged: it comes out under the mouse")
+  do  -- its own lines, under its words
+    local keepL = def.card.lines
+    local h0 = pf.h
+    def.card.lines = function() return { "FARM", "", mob, "3 up", "good", list = { { "timed by Frankadank Sithlord", "0% sure" }, { "Spot 2", "0:40" } } } end
+    D.PinPaint("BiSFarm:farm")
+    ok(pf.l1.shown and pf.l1.a.text == "timed by Frankadank Sithlord" and pf.l1.b.text == "0% sure" and pf.l2.shown and not pf.l3.shown and pf.h == h0 + 2 * D.PIN_LINE + 4 and pf.b1.shown, "pulled out: its own lines too", pf.h)
+    def.card.lines = keepL
+    D.PinPaint("BiSFarm:farm")
+    ok(not pf.l1.shown and pf.h == h0, "none: as small as before")
+  end
   ok(pf.parent == UIParent, "its own frame, not the deck's")
   ok(w.shown and w.kind == "card", "the deck is not painted under the drag (the dragged piece must hear its end)")
   w.scripts.OnDragStop(w)
