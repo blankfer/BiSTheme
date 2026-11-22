@@ -1,0 +1,388 @@
+--[[
+  BiSTheme / DeckLayout.lua  --  WHERE EVERYTHING GOES ON THE DECK (21 Nov 2026).
+
+  Arn, 21 Nov: "our next big project is making bis tools a deck, this time we are going 9:16"; "from the start rezisable and
+  toggles"; "unifed ui"; "i like some landcape imax 70mm and others make more sense 9:16"; "maybe landscape can scale things
+  to fulll screen and portrait can be our minimized mode. everyhting smartly resizable".
+
+  This file knows no frame and no game: T.DeckLayout(view, w, h, sw) answers a list of BOXES, each { kind, x, y, w, h, i, ... }
+  in the deck's own units (x right, y DOWN from the top left). Deck.lua draws that list and nothing else, so the test can ask
+  for every size, both shapes and every switch, and prove that nothing touches, nothing leaves the deck and the one big button
+  is always there - without the client. (The probe deck's first phone was 9:16 and its list ran through its buttons; the
+  test of the day only asked for the shape.)
+
+  THE SHAPE IS THE SIZE: wider than tall = LANDSCAPE (1.43:1, IMAX's; it grows to full screen), else PORTRAIT (9:16, the
+  minimized mode). The words keep their size; more room = more rows, more columns, more cards. Less room = the least
+  important part goes (L.DROP, in order), never a smaller letter and never an overlap.
+
+  THE VIEW is data a page handed in (Deck.lua asks it), counts only:
+    { kind = "home",  cards = n, apps = n, dock = n }
+    { kind = "page",  boxes = n, tabs = n, rows = n, keys = n, big = true, hero = true, say = true, strip = true, textLines = n }
+    { kind = "steps", steps = n, textLines = n, note = true, keys = n, hero = true }
+    { kind = "switches", groups = { n, n, ... } }
+  SWITCHES (sw[key] == false hides): cards, apps, dock, hero, boxes, tabs, strip, say, keys, list, code.
+]]
+BiSTheme = BiSTheme or {}
+local T = BiSTheme
+if (T.DECKLAYOUT_MINOR or 0) >= 1 then return end
+T.DECKLAYOUT_MINOR = 1
+
+local L = {
+  PORTRAIT = 9 / 16, LANDSCAPE = 1.43,
+  MIN_W = 220, MIN_H = 300, MIN_LW = 420, MIN_LH = 294,
+  PAD = 10, GAP = 4,
+  STATUS = 16, TITLE = 24, KICK = 12,            -- the top: clock and x, the name, what it belongs to
+  CARD = 46, CARD_BTN = 24, CARD_MIN_W = 210,    -- a live card; its buttons
+  APP_W = 62, APP_H = 60, DOCK_H = 42, DOCK_W = 46,
+  BOX_H = 32, TAB_H = 20, STRIP = 4, ROW = 22, ROW_MIN_W = 170, SAY = 14,
+  BIG = 32, KEY = 22, LINK = 16,
+  LINE = 17, NOTE = 14, PROG = 4,
+  FOOT = 16, RAIL = 60,
+  HERO_MIN = 70, HERO_SHARE = 0.28,
+  MAX_CARDS = 6,
+}
+T.DECK_L = L
+
+local floor, max, min, ceil = math.floor, math.max, math.min, math.ceil
+
+--- "portrait" or "landscape", by the size itself.
+function T.DeckShape(w, h) return w > h and "landscape" or "portrait" end
+
+--- A size the deck may have: never under the least, portrait or landscape.
+function T.DeckClamp(w, h)
+  if w > h then return max(w, L.MIN_LW), max(h, L.MIN_LH) end
+  return max(w, L.MIN_W), max(h, L.MIN_H)
+end
+
+local function on(sw, key) return not sw or sw[key] ~= false end
+
+--- A column being filled from both ends: `top` takes the next piece down, `bottom` the next one up; `left()` is what is free.
+local function column(out, x, y, w, h)
+  local c = { x = x, w = w, y0 = y, y1 = y + h, out = out }
+  function c:left() return self.y1 - self.y0 end
+  function c:top(kind, ph, extra)
+    local b = { kind = kind, x = self.x, y = self.y0, w = self.w, h = ph }
+    if extra then for k, v in pairs(extra) do b[k] = v end end
+    out[#out + 1] = b
+    self.y0 = self.y0 + ph + L.GAP
+    return b
+  end
+  function c:bottom(kind, ph, extra)
+    self.y1 = self.y1 - ph
+    local b = { kind = kind, x = self.x, y = self.y1, w = self.w, h = ph }
+    if extra then for k, v in pairs(extra) do b[k] = v end end
+    out[#out + 1] = b
+    self.y1 = self.y1 - L.GAP
+    return b
+  end
+  return c
+end
+
+--- n boxes of one kind side by side inside a band.
+local function spread(out, kind, n, x, y, w, h)
+  if n <= 0 then return end
+  local each = (w - (n - 1) * L.GAP) / n
+  for i = 1, n do out[#out + 1] = { kind = kind, i = i, x = x + (i - 1) * (each + L.GAP), y = y, w = each, h = h } end
+end
+
+--- How many side-by-side pieces of at least `least` fit in w (never 0).
+local function fit(n, w, least)
+  return max(1, min(n, floor((w + L.GAP) / (least + L.GAP))))
+end
+
+--- The top of every view: clock left, x right; the kicker and the title. Answers the y under it.
+local function head(out, x, y, w, back)
+  out[#out + 1] = { kind = "clock", x = x, y = y, w = min(60, w * 0.3), h = L.STATUS }
+  out[#out + 1] = { kind = "grip", x = x + w * 0.3 + 4, y = y, w = w * 0.4 - 8, h = L.STATUS }
+  out[#out + 1] = { kind = "close", x = x + w - 18, y = y, w = 18, h = L.STATUS }
+  out[#out + 1] = { kind = "shape", x = x + w - 40, y = y, w = 18, h = L.STATUS }
+  y = y + L.STATUS + 2
+  local bw = back and 22 or 0
+  if back then out[#out + 1] = { kind = "back", x = x, y = y, w = 20, h = L.TITLE } end
+  local kw = min(110, w * 0.36)
+  out[#out + 1] = { kind = "title", x = x + bw, y = y, w = w - bw - kw - 4, h = L.TITLE }
+  out[#out + 1] = { kind = "kicker", x = x + w - kw, y = y + (L.TITLE - L.KICK) / 2, w = kw, h = L.KICK }
+  return y + L.TITLE + L.GAP
+end
+
+--- The foot: the switches key left, the home bar middle, the faint code right. Answers the y of its top.
+local function foot(out, x, bottom, w, sw)
+  local y = bottom - L.FOOT
+  out[#out + 1] = { kind = "gear", x = x, y = y, w = 18, h = L.FOOT }
+  local cw = min(120, w * 0.4)
+  out[#out + 1] = { kind = "home", x = x + 22, y = y + (L.FOOT - 4) / 2, w = max(20, w - 22 - cw - 20 - 8), h = 4 }
+  if on(sw, "code") then out[#out + 1] = { kind = "code", x = x + w - cw - 16, y = y, w = cw, h = L.FOOT } end
+  out[#out + 1] = { kind = "size", x = x + w - 12, y = y + L.FOOT - 12, w = 12, h = 12 }
+  return y - L.GAP
+end
+
+--- The apps as a grid in a band: `per` across; more than fit = pages (`more`).
+local function appGrid(out, n, x, y, w, h)
+  if n <= 0 or h < L.APP_H then return 0 end
+  local per = fit(99, w, L.APP_W)
+  local rows = max(1, floor((h + L.GAP) / (L.APP_H + L.GAP)))
+  local room = per * rows
+  local show = min(n, room)
+  local each = (w - (per - 1) * L.GAP) / per
+  for i = 1, show do
+    local cx, cy = (i - 1) % per, floor((i - 1) / per)
+    out[#out + 1] = { kind = "app", i = i, x = x + cx * (each + L.GAP), y = y + cy * (L.APP_H + L.GAP), w = each, h = L.APP_H, pages = ceil(n / room) }
+  end
+  return ceil(show / per) * (L.APP_H + L.GAP)
+end
+
+--- The dock, centred.
+local function dock(out, n, x, y, w)
+  local show = min(n, fit(99, w - 8, L.DOCK_W))
+  local each = min(L.DOCK_W + 20, (w - 8 - (show - 1) * L.GAP) / show)
+  local all = show * each + (show - 1) * L.GAP
+  out[#out + 1] = { kind = "dockbar", x = x, y = y, w = w, h = L.DOCK_H, under = true }
+  for i = 1, show do out[#out + 1] = { kind = "dock", i = i, x = x + (w - all) / 2 + (i - 1) * (each + L.GAP), y = y + 4, w = each, h = L.DOCK_H - 8 } end
+end
+
+--- The rail of apps down the left side (landscape). Answers the x after it.
+local function rail(out, n, x, y, h)
+  local room = max(1, floor((h + L.GAP) / (L.RAIL - 8 + L.GAP)))
+  for i = 1, min(n, room) do
+    out[#out + 1] = { kind = "railapp", i = i, x = x, y = y + (i - 1) * (L.RAIL - 8 + L.GAP), w = L.RAIL - 8, h = L.RAIL - 8, pages = ceil(n / room) }
+  end
+  return x + L.RAIL
+end
+
+--- Rows filling a band; answers how many.
+local function rowList(out, kind, n, x, y, w, h, first)
+  local room = max(0, floor((h + 2) / (L.ROW + 2)))
+  local show = min(n, room)
+  for i = 1, show do out[#out + 1] = { kind = kind, i = (first or 0) + i, x = x, y = y + (i - 1) * (L.ROW + 2), w = w, h = L.ROW, pages = room > 0 and ceil(n / room) or 1 } end
+  return show
+end
+
+-- THE VIEWS ----------------------------------------------------------------------------------------------------------
+
+local function home(out, v, w, h, sw)
+  local x, W = L.PAD, w - 2 * L.PAD
+  local y = head(out, x, 6, W, false)
+  local bottom = foot(out, x, h - 5, W, sw)
+  local nCards = on(sw, "cards") and min(v.cards or 0, L.MAX_CARDS) or 0
+  local nApps = on(sw, "apps") and (v.apps or 0) or 0
+  local nDock = on(sw, "dock") and (v.dock or 0) or 0
+  if nDock > 0 and bottom - y >= L.DOCK_H + L.CARD then
+    dock(out, nDock, x, bottom - L.DOCK_H, W)
+    bottom = bottom - L.DOCK_H - L.GAP
+  end
+  if T.DeckShape(w, h) == "landscape" then
+    if nApps > 0 and W >= 360 then
+      local nx = rail(out, nApps, x, y, bottom - y)
+      W, x = W - (nx - x), nx
+    end
+    if nCards > 0 then
+      local per = fit(nCards, W, L.CARD_MIN_W)
+      local ch = L.CARD + L.CARD_BTN + L.GAP
+      local rows = max(1, floor((bottom - y + L.GAP) / (ch + L.GAP)))
+      local show = min(nCards, per * rows)
+      local each = (W - (per - 1) * L.GAP) / per
+      -- room to spare: the cards grow taller, evenly
+      local used = ceil(show / per)
+      local tall = min(ch * 1.8, (bottom - y - (used - 1) * L.GAP) / used)
+      ch = max(ch, floor(tall))
+      for i = 1, show do
+        out[#out + 1] = { kind = "card", i = i, x = x + ((i - 1) % per) * (each + L.GAP), y = y + floor((i - 1) / per) * (ch + L.GAP), w = each, h = ch, btn = true }
+      end
+    end
+    return
+  end
+  -- portrait: cards on top (with their buttons while there is room for a row of apps under them), then the apps
+  local appsNeed = nApps > 0 and (L.APP_H + L.GAP) or 0
+  local room = bottom - y - appsNeed
+  local full, bare = L.CARD + L.CARD_BTN + L.GAP, L.CARD + L.GAP
+  -- few apps want few rows: what they do not need, the cards take
+  local per = fit(99, W, L.APP_W)
+  local appRows = nApps > 0 and ceil(nApps / per) or 0
+  local appsWant = min(appRows, 3) * (L.APP_H + L.GAP)
+  local forCards = max(room - max(0, appsWant - appsNeed), nApps > 0 and 0 or room)
+  local shown = 0
+  while shown < nCards do
+    local ch = (shown == 0 or forCards >= (shown + 1) * full) and full or bare
+    if forCards < ch then ch = bare end
+    if forCards < ch then break end
+    shown = shown + 1
+    out[#out + 1] = { kind = "card", i = shown, x = x, y = y, w = W, h = ch - L.GAP, btn = ch == full }
+    y, forCards = y + ch, forCards - ch
+  end
+  appGrid(out, nApps, x, y, W, bottom - y)
+end
+
+--- The right side of a page (or the bottom of a tall one): the big button over its keys, from the bottom up.
+local function actions(c, v, sw)
+  local nk = on(sw, "keys") and (v.keys or 0) or 0
+  if nk > 0 and c:left() >= L.KEY + L.BIG + 2 * L.GAP then
+    local per = fit(nk, c.w, 64)
+    local y = c.y1 - L.KEY
+    c.y1 = y - L.GAP
+    spread(c.out, "key", min(nk, per), c.x, y, c.w, L.KEY)
+  end
+  if v.big then c:bottom("big", L.BIG) end
+end
+
+local function page(out, v, w, h, sw)
+  local x, W = L.PAD, w - 2 * L.PAD
+  local y = head(out, x, 6, W, true)
+  local bottom = foot(out, x, h - 5, W, sw)
+  local nb = on(sw, "boxes") and (v.boxes or 0) or 0
+  local nt = on(sw, "tabs") and (v.tabs or 0) or 0
+  local hero = v.hero and on(sw, "hero")
+  if T.DeckShape(w, h) == "landscape" then
+    if (v.apps or 0) > 0 and W >= 560 then
+      local nx = rail(out, v.apps, x, y, bottom - y)
+      W, x = W - (nx - x), nx
+    end
+    -- the list left, the detail right
+    local lw = (v.rows or 0) > 0 and max(L.ROW_MIN_W, floor(W * (W >= 620 and 0.40 or 0.46))) or 0
+    if lw > 0 then
+      local c = column(out, x, y, lw, bottom - y)
+      if nt > 0 then local ty = c.y0 c.y0 = ty + L.TAB_H + L.GAP spread(out, "tab", nt, x, ty, lw, L.TAB_H) end
+      if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
+      if v.say and on(sw, "say") then c:bottom("say", L.SAY) end
+      rowList(out, "row", v.rows, x, c.y0, lw, c:left())
+      x, W = x + lw + L.GAP * 2, W - lw - L.GAP * 2
+    end
+    local c = column(out, x, y, W, bottom - y)
+    actions(c, v, sw)
+    if nb > 0 and c:left() >= L.BOX_H then
+      local per = fit(nb, W, 62)
+      local by = c.y0
+      c.y0 = by + L.BOX_H + L.GAP
+      spread(out, "box", min(nb, per), x, by, W, L.BOX_H)
+    end
+    if (v.textLines or 0) > 0 and c:left() >= L.LINE + 8 then c:top("text", min(v.textLines * L.LINE + 8, c:left() - (hero and L.HERO_MIN or 0) > L.LINE + 8 and c:left() - (hero and L.HERO_MIN or 0) or c:left())) end
+    if hero and c:left() >= L.HERO_MIN then c:top("hero", c:left()) end
+    return
+  end
+  local c = column(out, x, y, W, bottom - y)
+  actions(c, v, sw)
+  if v.say and on(sw, "say") and c:left() >= L.SAY + 4 * (L.ROW + 2) then c:bottom("say", L.SAY) end
+  -- what the list needs to be worth having; the picture takes what is over
+  local need = (v.rows or 0) > 0 and 4 * (L.ROW + 2) or 0
+  local mids = (nb > 0 and L.BOX_H + L.GAP or 0) + (nt > 0 and L.TAB_H + L.GAP or 0) + ((v.strip and on(sw, "strip")) and L.STRIP + L.GAP or 0)
+  if hero then
+    local room = c:left() - need - mids
+    if room >= L.HERO_MIN then c:top("hero", min(floor(h * L.HERO_SHARE), room - L.GAP)) end
+  end
+  if nb > 0 and c:left() >= L.BOX_H + need then
+    local by = c.y0
+    c.y0 = by + L.BOX_H + L.GAP
+    spread(out, "box", min(nb, fit(nb, W, 56)), x, by, W, L.BOX_H)
+  end
+  if nt > 0 then
+    local ty = c.y0
+    c.y0 = ty + L.TAB_H + L.GAP
+    spread(out, "tab", nt, x, ty, W, L.TAB_H)
+  end
+  if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
+  if (v.textLines or 0) > 0 and c:left() >= L.LINE + 8 then c:top("text", min(v.textLines * L.LINE + 8, c:left())) end
+  if (v.rows or 0) > 0 and c:left() >= L.ROW then
+    -- a wide portrait deck lists in two columns
+    if W >= 2 * L.ROW_MIN_W + 160 then
+      local half = (W - L.GAP) / 2
+      local room = max(1, floor((c:left() + 2) / (L.ROW + 2)))
+      rowList(out, "row", min(v.rows, room), x, c.y0, half, c:left())
+      if v.rows > room then rowList(out, "row", v.rows - room, x + half + L.GAP, c.y0, half, c:left(), room) end
+    else
+      rowList(out, "row", v.rows, x, c.y0, W, c:left())
+    end
+  end
+end
+
+--- One step at a time (the probe deck's flow): the progress, the card (its words, its button, back / skip / next), the list.
+local function stepCard(out, c, v, sw)
+  local inner = 8
+  local lines = max(1, min(v.textLines or 2, 5))
+  local noteH = v.note and L.NOTE + 2 or 0
+  local nk = min(v.keys or 0, 3)
+  local need = inner + L.NOTE + 4 + lines * L.LINE + noteH + L.BIG + L.GAP + (nk > 0 and L.KEY + L.GAP or 0) + L.LINK + inner
+  while need > c:left() and lines > 1 do lines, need = lines - 1, need - L.LINE end
+  if need > c:left() and noteH > 0 then need, noteH = need - noteH, 0 end
+  if need > c:left() and nk > 0 then need, nk = need - L.KEY - L.GAP, 0 end
+  local x, w = c.x + inner, c.w - 2 * inner
+  local y = c.y0 + inner
+  out[#out + 1] = { kind = "stepcard", x = c.x, y = c.y0, w = c.w, h = need, under = true }
+  out[#out + 1] = { kind = "stephead", x = x, y = y, w = w, h = L.NOTE }
+  y = y + L.NOTE + 4
+  out[#out + 1] = { kind = "steptext", x = x, y = y, w = w, h = lines * L.LINE, lines = lines }
+  y = y + lines * L.LINE
+  if noteH > 0 then out[#out + 1] = { kind = "stepnote", x = x, y = y, w = w, h = L.NOTE } y = y + noteH end
+  out[#out + 1] = { kind = "big", x = x, y = y, w = w, h = L.BIG }
+  y = y + L.BIG + L.GAP
+  if nk > 0 then spread(out, "key", nk, x, y, w, L.KEY) y = y + L.KEY + L.GAP end
+  spread(out, "link", 3, x, y, w, L.LINK)
+  c.y0 = c.y0 + need + L.GAP
+end
+
+local function steps(out, v, w, h, sw)
+  local x, W = L.PAD, w - 2 * L.PAD
+  local y = head(out, x, 6, W, true)
+  local bottom = foot(out, x, h - 5, W, sw)
+  local list = on(sw, "list")
+  if T.DeckShape(w, h) == "landscape" then
+    local lw = list and max(L.ROW_MIN_W, floor(W * 0.40)) or 0
+    out[#out + 1] = { kind = "progress", x = x, y = y, w = W, h = L.PROG }
+    y = y + L.PROG + L.GAP
+    if list then
+      rowList(out, "step", v.steps or 0, x, y, lw, bottom - y)
+      x, W = x + lw + 2 * L.GAP, W - lw - 2 * L.GAP
+    end
+    local c = column(out, x, y, W, bottom - y)
+    stepCard(out, c, v, sw)
+    if v.hero and on(sw, "hero") and c:left() >= L.HERO_MIN then c:top("hero", c:left()) end
+    return
+  end
+  local c = column(out, x, y, W, bottom - y)
+  c:top("progress", L.PROG)
+  local lineCard = 8 + L.NOTE + 4 + min(v.textLines or 2, 5) * L.LINE + (v.note and L.NOTE + 2 or 0) + L.BIG + L.GAP + L.LINK + 8 + ((v.keys or 0) > 0 and L.KEY + L.GAP or 0)
+  if v.hero and on(sw, "hero") then
+    local room = c:left() - lineCard - L.GAP - (list and 3 * (L.ROW + 2) or 0)
+    if room >= L.HERO_MIN then c:top("hero", min(floor(h * L.HERO_SHARE), room - L.GAP)) end
+  end
+  stepCard(out, c, v, sw)
+  if list and c:left() >= L.ROW then rowList(out, "step", v.steps or 0, x, c.y0, W, c:left()) end
+end
+
+--- The switches: presets, a group head and its rows, the size sliders at the bottom.
+local function switches(out, v, w, h, sw)
+  local x, W = L.PAD, w - 2 * L.PAD
+  local y = head(out, x, 6, W, true)
+  local bottom = foot(out, x, h - 5, W, sw)
+  local c = column(out, x, y, W, bottom - y)
+  local py = c.y0
+  c.y0 = py + L.KEY + L.GAP
+  spread(out, "preset", 3, x, py, W, L.KEY)
+  c:bottom("slider", L.ROW, { i = 2 })
+  c:bottom("slider", L.ROW, { i = 1 })
+  -- the rows flow down, then into the next column
+  local all = {}
+  for g, n in ipairs(v.groups or {}) do
+    all[#all + 1] = { head = g }
+    for i = 1, n do all[#all + 1] = { group = g, i = i } end
+  end
+  local cols = fit(4, W, 200)
+  local each = (W - (cols - 1) * L.GAP) / cols
+  local col, yy = 0, c.y0
+  for _, a in ipairs(all) do
+    local ph = a.head and L.NOTE or L.ROW
+    if yy + ph > c.y1 then col, yy = col + 1, c.y0 end
+    if col >= cols or yy + ph > c.y1 then break end
+    out[#out + 1] = { kind = a.head and "swhead" or "switch", group = a.head or a.group, i = a.i, x = x + col * (each + L.GAP), y = yy, w = each, h = ph }
+    yy = yy + ph + 2
+  end
+end
+
+local VIEWS = { home = home, page = page, steps = steps, switches = switches }
+
+--- The boxes of a view at a size. The size is clamped first; the second and third answers say what it became.
+function T.DeckLayout(view, w, h, sw)
+  w, h = T.DeckClamp(w, h)
+  local out = {}
+  local fn = VIEWS[view and view.kind or "home"] or home
+  fn(out, view or {}, w, h, sw)
+  return out, w, h
+end
