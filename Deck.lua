@@ -1309,7 +1309,7 @@ function D.Paint()
   elseif m.rows then
     v.lens = function(i)
       local x = m.rows[i] or {}
-      return #tostring(x.text or ""), (x.side or x.less or x.more) and 58 or #tostring(x.right or "") * 6 + 8
+      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or 0) + #tostring(x.right or "") * 6 + 8
     end
   end
   D.paints = (D.paints or 0) + 1
