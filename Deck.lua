@@ -355,12 +355,13 @@ D.SWITCHES = {
   { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
-  { "EVERYWHERE", { { "code", "Faint code line" } } },
+  { "EVERYWHERE", { { "signs", "Signal, WiFi, battery" }, { "code", "Faint code line" } } },
 }
 
 --- The data of the open page, asked once a paint.
 function D.Model()
   local m = { page = D.page or "home" }
+  m.status = D.Status and D.Status() or nil
   m.apps = shownApps()
   if m.page == "home" then
     m.cards, m.dock = D.Cards(), dockList()
@@ -461,7 +462,7 @@ end
 
 -- THE SKIN ----------------------------------------------------------------------------------------------------------
 
-local CLICK = { close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
+local CLICK = { close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
   link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1, cardout = 1, cardend = 1, less = 1, plus = 1 }
 local LOOK = {                                            -- kind -> ground colour, alpha
   card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 },
@@ -531,8 +532,8 @@ end
 function D.Speak(w)
   if D.fight or not (D.Store().easy or {}).speak then return false end
   if not (C_VoiceChat and C_VoiceChat.SpeakText) then return false end
-  local out = {}
-  for _, fs in ipairs({ w.c, w.a, w.b }) do
+  local out = { w.aloud }
+  for _, fs in ipairs(w.aloud and {} or { w.c, w.a, w.b }) do
     local s = fs.said
     if type(s) == "string" and s ~= "" and #s > 1 then out[#out + 1] = s end
   end
@@ -561,7 +562,19 @@ function D.IsSecure(b) return type(b) == "table" and (b.macro or b.item or b.spe
 
 --- What each kind says and does. `w` = the piece, `o` = its box, `m` = the model.
 local PAINT = {}
-function PAINT.clock(w) say(w.a, date and date("%H:%M") or "", 11, "ink") end
+function PAINT.clock(w, o, m)
+  say(w.a, date and date("%H:%M") or "", 11, "ink")
+  if m.status and m.status.resting and D.Store().sw.signs ~= false then D.DrawBed(w, 31, math.floor(o.h / 2) - 5) end
+end
+function PAINT.status(w, o, m)
+  local s = m.status
+  if not s then return end
+  D.DrawStatus(w, s, o.h)
+  local words = D.StatusWords(s)
+  w.act = function() D.page = D.page == "BiSDeck:status" and "home" or "BiSDeck:status" D.Dirty(true) end
+  w.tip = table.concat(words, "\n")
+  w.aloud = table.concat(words, ", ")
+end
 function PAINT.close(w) say(w.a, "x", 12, "ink2", "CENTER") w.act = function() D.Hide() end w.tip = "Close" end
 function PAINT.shape(w) say(w.a, T.DeckShape(D.W, D.H) == "portrait" and "[ ]" or "|", 11, "ink2", "CENTER") w.act = function() D.Flip() end w.tip = "Tall / wide" end
 function PAINT.gear(w) say(w.a, "*", 14, "ink2", "CENTER") w.act = function() D.page = (D.page == "switches") and "home" or "switches" D.Dirty(true) end w.tip = "Switches and size" end
@@ -737,6 +750,9 @@ local function words(w, o)
     w.a:SetPoint("TOPLEFT", w, "TOPLEFT", o.kind == "text" and 8 or 0, o.kind == "text" and -5 or 0) w.a:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", o.kind == "text" and -8 or 0, 0)
   elseif o.kind == "switch" or o.kind == "slider" or o.kind == "stephead" then
     w.a:SetPoint("LEFT", w, "LEFT", o.kind == "stephead" and 0 or 8, 0) w.b:SetPoint("RIGHT", w, "RIGHT", o.kind == "stephead" and 0 or -8, 0)
+  elseif o.kind == "status" then
+    -- (the battery's number is placed where the battery is drawn)
+    w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 38, -(math.floor(o.h / 2) - 6)) w.a:SetPoint("BOTTOMRIGHT", w, "TOPLEFT", 63, -(math.floor(o.h / 2) + 7))
   else
     w.a:SetPoint("LEFT", w, "LEFT", 2, 0) w.a:SetPoint("RIGHT", w, "RIGHT", -2, 0)
   end
@@ -814,7 +830,7 @@ end
 function D.Preset(i)
   local st = D.Store()
   st.sw = {}
-  local off = i == 2 and { "hero", "strip", "say", "keys", "missing" } or i == 3 and { "hero", "strip", "say", "keys", "cards", "boxes", "dock", "code", "missing" } or {}
+  local off = i == 2 and { "hero", "strip", "say", "keys", "missing" } or i == 3 and { "hero", "strip", "say", "keys", "cards", "boxes", "dock", "code", "missing", "signs" } or {}
   for _, k in ipairs(off) do st.sw[k] = false end
   D.Save()
   D.Dirty(true)
@@ -924,7 +940,8 @@ function D.Paint()
     n = n + 1
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
-    w.act, w.tip, w.hot, w.lit, w.dragId, w.keys = nil, nil, nil, nil, nil, nil
+    w.act, w.tip, w.hot, w.lit, w.dragId, w.keys, w.aloud = nil, nil, nil, nil, nil, nil, nil
+    if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
     w.a:SetWordWrap(false)
@@ -1091,7 +1108,7 @@ function D.Toggle() if D.frame and D.frame:IsShown() then D.Hide() else D.Show()
 
 -- one beat, only while shown: a dirty deck paints, a held corner sizes
 function D.Wake()
-  local f, acc = D.frame, 0
+  local f, acc, slow = D.frame, 0, 0
   f:SetScript("OnUpdate", function(_, el)
     acc = acc + (el or 0)
     if D.grip then
@@ -1100,6 +1117,8 @@ function D.Wake()
     end
     if acc < D.BEAT then return end
     acc = 0
+    slow = slow + 1
+    if slow >= 10 then slow = 0 D.dirty = true end         -- (the clock and the signs)
     if D.dirty or D.ticking then D.Paint() end
   end)
 end

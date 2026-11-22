@@ -43,6 +43,10 @@ local function node(kind, parent, template)
   function M:SetTextColor(r) if type(r) ~= "number" then error("SetTextColor wants numbers", 2) end self.col = r end
   function M:CreateTexture() return node("Texture", self) end
   function M:CreateFontString() return node("FontString", self) end
+  function M:CreateLine() return node("Line", self) end
+  function M:SetThickness(v) if type(v) ~= "number" or v <= 0 then error("SetThickness", 2) end self.thick = v end
+  function M:SetStartPoint(p, rel, x, y) if type(p) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then error("SetStartPoint", 2) end self.from = { x, y } end
+  function M:SetEndPoint(p, rel, x, y) if type(p) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then error("SetEndPoint", 2) end self.to = { x, y } end
   return setmetatable(f, { __index = function(_, k) return M[k] or (type(k) == "string" and k:match("^%u") and function() end) or nil end })
 end
 _G.CreateFrame = function(kind, _, parent, template) return node(kind, parent, template) end
@@ -654,6 +658,100 @@ do
   ok(icon("Quiet"), "on: on home")
   for _, id in ipairs({ "BiSFarm:farm", "BiSRide:ride", "BiSStep:s", "BiSQuiet:q" }) do D.defs[id] = nil end
   D.sorted = nil D.page = "home"
+end
+
+-- THE SIGNS (Arn, 22 Nov: "the signal strength does something WiFi guild communication battery something n else")
+do
+  local net = { 10, 20, 35, 42 }
+  local lib = { enabled = true, peers = {}, vers = {} }
+  function lib:Enabled() return self.enabled end
+  local locked, rest, xpMax, xpRest, level, worn = false, false, 10000, 7500, 31, { [1] = { 80, 100 }, [5] = { 45, 50 } }
+  local gearAsks = 0
+  _G.GetNetStats = function() return net[1], net[2], net[3], net[4] end
+  _G.GetFramerate = function() return 59.6 end
+  _G.C_ChatInfo = { InChatMessagingLockdown = function() return locked end }
+  _G.UnitXPMax = function() return xpMax end
+  _G.GetXPExhaustion = function() return xpRest end
+  _G.UnitLevel = function() return level end
+  _G.GetMaxPlayerLevel = function() return 60 end
+  _G.GetInventoryItemDurability = function(slot) gearAsks = gearAsks + 1 local g = worn[slot] if g then return g[1], g[2] end end
+  _G.C_Container = { GetContainerNumSlots = function(b) return b == 0 and 16 or 0 end, GetContainerNumFreeSlots = function(b) return b == 0 and 4 or 0, 0 end }
+  _G.IsResting = function() return rest end
+  assert(loadfile("DeckStatus.lua"))()
+  _G.LibBiSComm = lib
+  ok(D.Bars(30) == 4 and D.Bars(120) == 3 and D.Bars(250) == 2 and D.Bars(900) == 1 and D.Bars(nil) == 0, "signal: fewer bars, slower")
+  ok(D.Ping() == 42, "the worse of home and world", D.Ping())
+  ok(D.Arcs(D.Net()) == 1, "WiFi: on, nobody heard: one arc")
+  lib.peers["Moo"] = {} lib.vers["Moo"] = {} lib.vers["Sue"] = {}
+  ok(D.Net().n == 2 and D.Arcs(D.Net()) == 2, "two heard, nobody counted twice", D.Net().n)
+  lib.vers["A"], lib.vers["B"] = {}, {}
+  ok(D.Arcs(D.Net()) == 3, "four: all of it")
+  locked = true ok(D.Net().state == "paused", "a chat lockdown: paused") locked = false
+  lib.enabled = false ok(D.Net().state == "off" and D.Arcs(D.Net()) == 0, "switched off") lib.enabled = true
+  _G.LibBiSComm = nil ok(D.Net().state == "none", "no library") _G.LibBiSComm = lib
+  local b = D.Battery(false)
+  ok(b.kind == "rested" and b.pct == 50 and not b.low and not b.charging, "battery while leveling: rested XP, 100 = a level and a half", b.kind .. " " .. tostring(b.pct))
+  ok(D.Battery(true).charging, "resting: it charges")
+  xpRest = nil ok(D.Battery(false).pct == 0 and not D.Battery(false).low, "no rested XP: empty, and that is no alarm") xpRest = 7500
+  level = 60 ok(D.Battery(false).kind == "gear" and D.Battery(false).pct == 80, "top level: the worst piece of gear", D.Battery(false).pct) level = 31
+  worn[5] = { 5, 50 } ok(D.Battery(false).kind == "rested", "(gear is asked again only when the game says it changed)")
+  fire("UPDATE_INVENTORY_DURABILITY")
+  ok(D.Battery(false).kind == "gear" and D.Battery(false).pct == 10 and D.Battery(false).low, "gear about to break always wins, low", D.Battery(false).pct)
+  worn[5] = { 45, 50 } fire("UPDATE_INVENTORY_DURABILITY")
+  local asks = gearAsks D.Status() local once = gearAsks - asks D.Status() ok(gearAsks - asks == once, "then not asked again", gearAsks - asks)
+  -- hidden answers are no answers
+  local keepNet = _G.GetNetStats
+  local sec = {}
+  _G.issecretvalue = function(v) return v == sec end
+  _G.GetNetStats = function() return sec, sec, sec, sec end
+  ok(D.Ping() == nil and D.Bars(D.Ping()) == 0, "a hidden ping: no bars, no error")
+  _G.GetNetStats = keepNet _G.issecretvalue = nil
+  -- drawn
+  D.SetTheme("dark") D.Store().sw = {} D.page = "home" D.Show() D.Flip("portrait") D.Size(260, 462)
+  local w = find("status")
+  ok(w and w.act and w.tip:find("Connection 42 ms", 1, true) and w.tip:find("4 heard", 1, true) and w.tip:find("Rested XP 50%", 1, true), "the signs, and their words", w and w.tip)
+  ok(w.a.text == "50", "the battery's number", w.a.text)
+  local function lit(i) return w.bits[i].r > 0.8 end
+  ok(lit(1) and lit(4), "four bars lit")
+  net[4] = 250 D.Paint() ok(lit(2) and not lit(3), "slower: two")
+  net[4] = 42
+  for _, t in pairs(w.bits) do if t.shown then ok(t.pts[1][4] >= 0 and t.pts[1][4] + t.w <= w.w and -t.pts[1][5] >= 0 and -t.pts[1][5] + t.h <= w.h, "a sign stays inside its place", t.pts[1][4] .. " " .. t.w) end end
+  for _, t in pairs(w.lines) do if t.shown then ok(t.from[1] >= 0 and t.to[1] <= w.w and -t.from[2] >= 0 and -t.from[2] <= w.h, "an arc too") end end
+  local struck = w.lines[13]
+  ok(not (struck and struck.shown), "WiFi on: no stroke")
+  lib.enabled = false D.Paint() ok(w.lines[13].shown, "off: a stroke through it") lib.enabled = true D.Paint() ok(not w.lines[13].shown, "and gone again")
+  local ck = find("clock")
+  ok(not (ck.bits and ck.bits[21] and ck.bits[21].shown), "not resting: no bed")
+  rest = true D.Paint() ok(find("clock").bits[21].shown and find("status").tip:find("Resting", 1, true), "resting: the bed, and it says so") rest = false
+  -- the page
+  click(find("status"))
+  ok(D.page == "BiSDeck:status" and find("title").a.text == "Status" and find("box", 1).a.text == "42", "a click: the Status page", D.page)
+  D.Size(300, 700)
+  local function row(name) for i = 1, count("row") do local x = find("row", i) if x.a.text == name then return x end end end
+  ok(row("Connection").b.text == "42 ms" and row("Frames a second").b.text == "60" and row("Free bag slots").b.text == "4 (25%)" and row("BiS network").b.text == "4 heard" and row("Moo").b.text == "in your group" and row("Sue").b.text == "heard", "in words and numbers", row("Free bag slots").b.text)
+  click(row("Battery shows")) ok(D.BatteryPick() == "rested") click(row("Battery shows")) ok(D.BatteryPick() == "gear" and find("status").a.text == "80", "Battery shows: your pick", find("status").a.text)
+  click(row("Battery shows")) ok(D.BatteryPick() == "bags" and find("status").a.text == "25", "bags") click(row("Battery shows")) ok(D.BatteryPick() == "auto" and D.Store().battery == nil, "auto again")
+  click(find("status")) ok(D.page == "home", "again: home")
+  for i = 1, count("app") do ok(find("app", i).c.text ~= "Status", "no icon of its own") end
+  -- a piece used for something else keeps no sign
+  D.Store().sw.signs = false D.Paint()
+  local left = 0
+  for _, p in ipairs(D.frame.pieces) do if p.kind ~= "status" and p.kind ~= "clock" then for _, t in pairs(p.bits or {}) do if t.shown and p.shown then left = left + 1 end end for _, t in pairs(p.lines or {}) do if t.shown and p.shown then left = left + 1 end end end end
+  ok(not find("status") and left == 0, "switched off: gone, nothing left behind", left)
+  D.Store().sw.signs = nil D.Paint()
+  local made0 = #made D.Paint() ok(#made == made0, "painted again: nothing new is made", #made - made0)
+  -- read aloud
+  local spoke
+  _G.C_VoiceChat = { SpeakText = function(_, words) spoke = words end }
+  D.Store().easy = { speak = true } D.spoken = nil
+  w = find("status") w.scripts.OnEnter(w)
+  ok(spoke and spoke:find("Connection 42 ms", 1, true), "read aloud: what they mean", spoke)
+  D.Store().easy = {}
+  -- the clock and the signs move on by themselves
+  net[4] = 130 for _ = 1, 11 do tick(1.01) end
+  ok(find("status").tip:find("130 ms", 1, true), "looked at again every ten seconds", find("status").tip)
+  _G.LibBiSComm = nil
+  _G.IsResting = function() return GAME.resting end
 end
 
 -- THE THEMES (Arn, 22 Nov: the clean dark one first; Ryan-Gosling-mode is one you turn on; "other people can change the theme")

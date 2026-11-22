@@ -48,7 +48,7 @@ local function hit(a, b)
 end
 
 local laid = 0
-local CLICKS = { close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1, more = 1, moreapps = 1 }
+local CLICKS = { status = 1, close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1, more = 1, moreapps = 1 }
 for name, v in pairs(VIEWS) do
   for _, size in ipairs(SIZES) do
     for _, sw in ipairs(SETS) do

@@ -31,7 +31,7 @@ local L = {
   PORTRAIT = 9 / 16, LANDSCAPE = 1.43,
   MIN_W = 220, MIN_H = 300, MIN_LW = 420, MIN_LH = 294,
   PAD = 10, GAP = 4,
-  STATUS = 22, TITLE = 24, KICK = 13,            -- the top: clock and x, the name, what it belongs to
+  STATUS = 22, CLOCK = 44, SIGNS = 66, TITLE = 24, KICK = 13,            -- the top: clock and x, the name, what it belongs to
   CARD = 48, CARD_BTN = 28, CARD_MIN_W = 210,    -- a live card; its buttons
   APP_W = 62, APP_H = 60, DOCK_H = 42, DOCK_W = 46,
   BOX_H = 36, TAB_H = 24, STRIP = 4, ROW = 24, ROW_MIN_W = 170, SAY = 14,
@@ -92,9 +92,12 @@ local function fit(n, w, least)
 end
 
 --- The top of every view: clock left, x right; the kicker and the title. Answers the y under it.
-local function head(out, x, y, w, back)
-  out[#out + 1] = { kind = "clock", x = x, y = y, w = min(60, w * 0.3), h = L.STATUS }
-  out[#out + 1] = { kind = "grip", x = x + w * 0.3 + 4, y = y, w = max(20, w * 0.7 - 2 * L.HIT - 3 * L.GAP - 4), h = L.STATUS }
+local function head(out, x, y, w, back, sw)
+  -- (the signs - signal, WiFi, battery - between the grip and the two keys: DeckStatus.lua)
+  local signs = on(sw, "signs") and L.SIGNS + L.GAP or 0
+  out[#out + 1] = { kind = "clock", x = x, y = y, w = L.CLOCK, h = L.STATUS }
+  out[#out + 1] = { kind = "grip", x = x + L.CLOCK + L.GAP, y = y, w = max(20, w - L.CLOCK - 2 * L.HIT - 4 * L.GAP - signs), h = L.STATUS }
+  if signs > 0 then out[#out + 1] = { kind = "status", x = x + w - 2 * L.HIT - 2 * L.GAP - L.SIGNS, y = y, w = L.SIGNS, h = L.STATUS } end
   out[#out + 1] = { kind = "close", x = x + w - L.HIT, y = y, w = L.HIT, h = L.STATUS }
   out[#out + 1] = { kind = "shape", x = x + w - 2 * L.HIT - L.GAP, y = y, w = L.HIT, h = L.STATUS }
   y = y + L.STATUS + 2
@@ -175,7 +178,7 @@ end
 
 local function home(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
-  local y = head(out, x, 6, W, false)
+  local y = head(out, x, 6, W, false, sw)
   local bottom = foot(out, x, h - 5, W, sw)
   local nCards = on(sw, "cards") and min(v.cards or 0, L.MAX_CARDS) or 0
   local nApps = on(sw, "apps") and (v.apps or 0) or 0
@@ -241,7 +244,7 @@ end
 
 local function page(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
-  local y = head(out, x, 6, W, true)
+  local y = head(out, x, 6, W, true, sw)
   local bottom = foot(out, x, h - 5, W, sw)
   local nb = on(sw, "boxes") and (v.boxes or 0) or 0
   local nt = on(sw, "tabs") and (v.tabs or 0) or 0
@@ -336,7 +339,7 @@ end
 
 local function steps(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
-  local y = head(out, x, 6, W, true)
+  local y = head(out, x, 6, W, true, sw)
   local bottom = foot(out, x, h - 5, W, sw)
   local list = on(sw, "list")
   if T.DeckShape(w, h) == "landscape" then
@@ -366,7 +369,7 @@ end
 --- The switches: presets, a group head and its rows, the size sliders at the bottom.
 local function switches(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
-  local y = head(out, x, 6, W, true)
+  local y = head(out, x, 6, W, true, sw)
   local bottom = foot(out, x, h - 5, W, sw)
   local c = column(out, x, y, W, bottom - y)
   local py = c.y0
