@@ -174,7 +174,7 @@ function D.Apps()
       end
     end
     D.Register{ owner = "BiSDeck", key = "apps", name = "Apps", icon = "+", order = 99,
-      page = { title = function() return "Apps" end, kicker = function() return "shown on home" end, tabs = function() return { "ICONS", "LIVE CARDS" } end, rows = function(tab) return tab == 2 and D.CardRows() or D.AppRows() end,
+      page = { title = function() return "Apps" end, kicker = function() return "shown on home" end, tabs = function() return { "ICONS", "CARDS", "STORE" } end, rows = function(tab) return tab == 3 and D.StoreRows and D.StoreRows() or tab == 2 and D.CardRows() or D.AppRows() end,
         keys = function() return { { word = "WELCOME", fn = D.Replay, tip = "The welcome and the first-time words again" } } end } }
     D.Register{ owner = "BiSDeck", key = "welcome", name = "Welcome", hidden = true, order = 98,
       card = { prio = function() if wel().over or wel().no then return nil end return 2 end,

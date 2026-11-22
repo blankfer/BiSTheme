@@ -755,6 +755,65 @@ do
   _G.IsResting = function() return GAME.resting end
 end
 
+-- THE PUBLIC DOOR (Arn, 22 Nov: "We make the api public if people want to put their own information into their phone. It's like
+-- curseforge inside wow forever")
+do
+  local here = { MyAddon = true, Other = true, Greedy = true }
+  _G.C_AddOns = { IsAddOnLoaded = function(n) return here[n] or n == "BiSTools" end, GetAddOnInfo = function(n) return n, n, "", here[n] and true or false, not here[n] and "MISSING" or nil end, EnableAddOn = function() end }
+  assert(loadfile("DeckAPI.lua"))()
+  local A = BiSDeckAPI
+  ok(A.major == 1 and A.version == 1, "BiSDeckAPI major 1")
+  local pressed2 = 0
+  local theirs = { key = "main", name = "My |cffff0000Addon|r", icon = "Mya", about = "It counts.", dev = true, hidden = true, order = 1, store = function() error("no") end, state = function() return "off" end,
+    card = { when = "news", prio = function() return 99 end, lines = function() return { "MINE", "", "Forty two", "42", "gold" } end, buttons = function() return { { word = "GO", fn = function() end }, { word = "CAST", spell = "Fireball" } } end },
+    page = { tabs = function() return { "A", "B" } end, rows = function(tab) return { { text = "row " .. tab, right = "x", act = { word = "go", fn = function() pressed2 = pressed2 + 1 end } }, { text = "m", act = { word = "m", macro = "/say hi" } }, "junk", 5 } end,
+      boxes = function() return { { "N", 42, "gold" }, { "B", 1, "hotpink" } } end, big = function() return { word = "CAST", macro = "/cast x" } end, text = function() return "Hello\nthere |TInterface\\Icons\\x:0|t" end } }
+  local app, why = A.Register("MyAddon", theirs)
+  ok(app and app.Dirty and app:Added() == false, "another addon's app, handed in", tostring(why))
+  local def = D.defs["MyAddon:main"]
+  ok(def.guest and def.name == "My Addon" and def.icon == "My" and not def.dev and not def.hidden and not def.store and not def.state and def.order == 500, "only the fields we know, cut and plain", def.name .. "/" .. tostring(def.icon))
+  local function why2(...) return select(2, A.Register(...)) end
+  ok(why2("NotHere", theirs) == "addon" and why2("BiSTools", theirs) == "ours" and why2("BiSEvil", theirs) == "addon", "not a loaded addon, or one of ours: refused")
+  here.BiSEvil = true ok(why2("BiSEvil", theirs) == "ours", "nor anything that calls itself BiS")
+  ok(why2("MyAddon", { key = "a b", name = "x", page = {} }) == "key" and why2("MyAddon", { key = "ok", page = {} }) == "name" and why2("MyAddon", { key = "ok", name = "x" }) == "page" and why2("MyAddon", nil) == "key", "wrong: why")
+  ok(A.Register("Greedy", { key = "a", name = "A", page = {} }) and A.Register("Greedy", { key = "b", name = "B", page = {} }) and why2("Greedy", { key = "c", name = "C", page = {} }) == "too many", "two apps at most")
+  ok(A.Register("Greedy", { key = "a", name = "A2", page = {} }), "one again: in its place")
+  -- not on the deck until ADD
+  D.SetTheme("dark") D.Store().sw = {} D.Store().apps = {} D.page = "home" D.Show() D.Flip("portrait") D.Size(400, 760)
+  local function icon(name) for i = 1, count("app") do local w = find("app", i) if w.c.text == name then return w end end end
+  local function card(title) for i = 1, count("card") do local w = find("card", i) if w.c.text and w.c.text:find(title, 1, true) then return w end end end
+  ok(not icon("My Addon") and not card("MINE") and app:Open() == false, "not on home until ADD, no card, and it cannot open itself")
+  D.Open("BiSDeck:apps") click(find("tab", 3))
+  local function row(s) for i = 1, count("row") do local x = find("row", i) if x.a.text:find(s, 1, true) then return x end end end
+  ok(row("My Addon, from MyAddon") and row("My Addon").b.text == "ADD" and row("BiS Tools").b.text == "YOU HAVE IT" and row("BiS Gamba").b.text == "GET", "the STORE: whose it is, ADD; what of ours you have", row("My Addon") and row("My Addon").b.text)
+  _G.LibBiSComm = { vers = { Moo = { addons = { BiSGamba = "1" } }, Sue = { addons = { BiSGamba = "1" } } } } D.Paint()
+  ok(row("BiS Gamba").b.text == "2 have it", "and how many you heard have it", row("BiS Gamba").b.text) _G.LibBiSComm = nil
+  click(row("My Addon"))
+  ok(row("My Addon").b.text == "ADDED" and app:Added(), "a click adds it")
+  D.page = "home" D.Paint()
+  ok(icon("My Addon") and card("MINE"), "on home, with its card")
+  local rank = {} for i = 1, count("card") do rank[find("card", i).c.text] = i end
+  for _, c in ipairs(D.Cards()) do if c.def.guest then ok(c.p == A.PRIO, "its card never outranks: prio 5 at most", c.p) end end
+  ok(app:Open() and find("title").a.text == "My Addon" and find("kicker").a.text == "FROM MYADDON", "its page says whose it is", find("kicker").a.text)
+  ok(count("row") == 2 and find("row", 2).act == nil and find("big") == nil and find("box", 2).a.tone == "ink", "no macro, no big cast, no colour of its own, no junk", count("row"))
+  ok(find("text").a.text == "Hello there ", "words: one line, no pictures in them", "[" .. tostring(find("text").a.text) .. "]")
+  click(find("row", 1)) ok(pressed2 == 1, "its own button works")
+  for _, b in ipairs(def.card.buttons()) do ok(b.word == "GO", "a spell is not a button here", b.word) end
+  theirs.name = "Changed" theirs.page.rows = nil D.Paint() ok(count("row") == 2 and def.name == "My Addon", "changing their table later changes nothing")
+  -- it breaks: parked, said with its own name, the rest goes on
+  A.Register("Other", { key = "x", name = "Broken", page = { rows = function() error("theirs") end }, card = { when = "news", lines = function() error("theirs too") end } })
+  D.SetAdded(D.defs["Other:x"], true)
+  local before2 = #said
+  D.page = "home" for _ = 1, 5 do D.Paint() end
+  ok(D.defs["Other:x"].parked and said[before2 + 1] and said[before2 + 1]:find("Other", 1, true), "it breaks: parked, named", said[before2 + 1])
+  D.Open("BiSDeck:apps") ok(row("Broken").b.text == "STOPPED", "the STORE says so")
+  -- removed
+  click(row("My Addon")) D.page = "home" D.Paint()
+  ok(not icon("My Addon") and not card("MINE") and not app:Added(), "a click removes it")
+  for _, id in ipairs({ "MyAddon:main", "Greedy:a", "Greedy:b", "Other:x" }) do D.defs[id] = nil end
+  D.sorted = nil D.page = "home"
+end
+
 -- THE THEMES (Arn, 22 Nov: the clean dark one first; Ryan-Gosling-mode is one you turn on; "other people can change the theme")
 do
   local function hexOf(th, name) return th.hex[name] or T.hex[name] end

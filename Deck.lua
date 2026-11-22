@@ -209,7 +209,7 @@ function D.SetWhen(def, when)
   D.Save()
 end
 function D.IsLive(def)
-  if not def.card then return false end
+  if not def.card or (def.guest and not (D.Added and D.Added(def))) then return false end
   local when = D.When(def)
   if when ~= "use" then return when == "news" end
   local live = D.Mine().live
@@ -304,7 +304,7 @@ function D.Pin(name) local st = D.Store() st.pin = name or nil D.profile = nil D
 function D.Icons()
   local ranks = { on = {}, off = {}, missing = {}, dev = {} }
   for _, d in ipairs(sorted()) do
-    if not d.hidden and (d.page or d.open or d.about) then
+    if not d.hidden and (d.page or d.open or d.about) and not (d.guest and not (D.Added and D.Added(d))) then
       local s = d.dev and "dev" or D.State(d)
       table.insert(ranks[s], { d, s })
     end
@@ -316,6 +316,7 @@ end
 --- Is this icon on the home screen? (hidden by hand, or the switch for what you do not have)
 function D.Shown(def, state)
   local st = D.Store()
+  if def.guest and not (D.Added and D.Added(def)) then return false end              -- (another addon's app: when you pressed ADD)
   if def.quietOff and state == "off" then return st.apps[def.id] == true end        -- (a tool that is off: the Apps page has it)
   if st.apps[def.id] == false then return false end
   return not (state == "missing" and st.sw.missing == false)

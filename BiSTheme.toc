@@ -16,6 +16,7 @@ Deck.lua
 DeckPins.lua
 DeckStatus.lua
 DeckApps.lua
+DeckAPI.lua
 Options.lua
 Minimap.lua
 Settings.lua
