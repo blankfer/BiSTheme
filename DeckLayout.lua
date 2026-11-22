@@ -193,21 +193,22 @@ local function home(out, v, w, h, sw)
   end
   -- portrait: cards on top (with their buttons while there is room for a row of apps under them), then the apps
   local appsNeed = nApps > 0 and (L.APP_H + L.GAP) or 0
-  local room = bottom - y - appsNeed
   local full, bare = L.CARD + L.CARD_BTN + L.GAP, L.CARD + L.GAP
-  -- few apps want few rows: what they do not need, the cards take
   local per = fit(99, W, L.APP_W)
   local appRows = nApps > 0 and ceil(nApps / per) or 0
-  local appsWant = min(appRows, 3) * (L.APP_H + L.GAP)
-  local forCards = max(room - max(0, appsWant - appsNeed), nApps > 0 and 0 or room)
-  local shown = 0
-  while shown < nCards do
-    local ch = (shown == 0 or forCards >= (shown + 1) * full) and full or bare
-    if forCards < ch then ch = bare end
-    if forCards < ch then break end
-    shown = shown + 1
-    out[#out + 1] = { kind = "card", i = shown, x = x, y = y, w = W, h = ch - L.GAP, btn = ch == full }
-    y, forCards = y + ch, forCards - ch
+  -- the icons get up to three rows (never less than one); the cards take what is over, the first always with its buttons
+  local room = bottom - y - min(appRows, 3) * (L.APP_H + L.GAP)
+  if room < full and appRows > 1 then room = bottom - y - appsNeed end
+  local show = min(nCards, floor(max(room, 0) / bare))
+  local btns = min(show, floor((room - show * bare) / (full - bare)))
+  while show > 1 and btns < 1 do
+    show = show - 1
+    btns = min(show, floor((room - show * bare) / (full - bare)))
+  end
+  for i = 1, show do
+    local ch = i <= btns and full or bare
+    out[#out + 1] = { kind = "card", i = i, x = x, y = y, w = W, h = ch - L.GAP, btn = i <= btns }
+    y = y + ch
   end
   appGrid(out, nApps, x, y, W, bottom - y)
 end
