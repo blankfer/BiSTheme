@@ -157,13 +157,13 @@ function D.Facts()
     f.raid = kind == "raid"
     f.dungeon = kind == "party" or kind == "scenario"
   end
-  if not f.pvp and C_PvP and ask(C_PvP.IsBattleground) == true then f.pvp = true end
   f.resting = ask(IsResting) == true
   f.raidGroup = ask(IsInRaid) == true
   local api = rawget(_G, "BiSGuildAPI")
   if f.raidGroup and type(api) == "table" and type(api.RaidNight) == "function" then
     local ok, n = pcall(api.RaidNight)
-    local start, now = ok and type(n) == "table" and plain(n.start) or nil, ask(GetServerTime)
+    local start = ok and type(n) == "table" and plain(n.start) or nil
+    local now = ask(GetServerTime)
     if type(start) == "number" and type(now) == "number" then f.raidSoon = now > start - 3600 and now < start + 4 * 3600 end
   end
   f.ghost = ask(UnitIsGhost, "player") == true
