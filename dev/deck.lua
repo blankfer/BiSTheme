@@ -529,6 +529,31 @@ do
     D.W, D.H, D.shape, D.page = W0, H0, S0, "BiSLong:p"
     D.Paint()
   end
+  -- one huge number with its breakdown on hover, and lines of icons under it
+  do
+    local pressed
+    D.Register{ owner = "BiSNum", key = "p", name = "Num", page = { tour = nil, rows = function() return { { text = "a" } } end, tabs = function() return { "A", "B" } end,
+      hero = function() return { art = "number", big = "77", small = "WF + FT", right = "last 74", under = "5 fights", tip = "The breakdown", lines = { { "Windfury", "12%" }, { "Best", "90" } }, peek = true, fn = function() pressed = "hero" end } end,
+      icons = function() return { { { pic = 1, word = "Flametongue", act = { word = "x", peek = true, fn = function() pressed = "fire" end } }, { word = "Water" } }, { { pic = 2, word = "ELEMENTS", lit = true, act = { word = "x", spell = "Call" } } } } end } }
+    local W0, H0, S0 = D.W, D.H, D.shape
+    D.W, D.H, D.shape, D.page = 260, 462, "portrait", "BiSNum:p"
+    D.Paint()
+    local hw, i1, i2 = find("hero"), find("icon"), find("icon", 3)
+    ok(hw.a.text == "77" and hw.a.size == 56 and hw.b.text == "last 74" and hw.e1.text == "5 fights" and hw.h == T.DECK_L.NUMBER, "a huge number", hw.a.size)
+    ok(i1.c.text == "Flametongue" and i1.pic.w == 30 and find("icon", 2).a.text == "-" and i2.lit and i2.sec and i2.sec.spell == "Call", "its icons, with their names; one that casts is secure")
+    local tip, dbl = nil, {}
+    local GT = _G.GameTooltip
+    _G.GameTooltip = setmetatable({ SetOwner = function() end, SetText = function(_, s) tip = s end, AddDoubleLine = function(_, a, b) dbl[#dbl + 1] = a .. " " .. b end, Show = function() end, Hide = function() end }, { __index = GT })
+    hw:GetScript("OnEnter")(hw)
+    ok(tip == "The breakdown" and dbl[1] == "Windfury 12%" and #dbl == 2, "hover: the breakdown", dbl[1])
+    _G.GameTooltip = GT
+    i1.act() ok(pressed == "fire", "an icon's press")
+    hw.act() ok(pressed == "hero", "and the number's")
+    D.Store().sw.hero = false D.Paint() ok(find("hero") and find("hero").a.text == "77", "pictures off: the number stays") D.Store().sw.hero = nil
+    D.page = "BiSLong:p" D.W, D.H, D.shape = W0, H0, S0
+    D.Paint()
+    for _, w in ipairs(D.frame.pieces) do if w.e1 and w:IsShown() then ok(not w.e1:IsShown(), "its extra words gone with it") end end
+  end
   -- the smallest icons say their names too, very small (Arn, 22 Nov: "small names on the new small icons")
   do
     local W0, H0, S0 = D.W, D.H, D.shape

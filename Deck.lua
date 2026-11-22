@@ -550,10 +550,14 @@ function D.Model()
       m.rows = p.rows and D.Call(d, "rows", p.rows, m.tab) or {}
       m.text = p.text and D.Call(d, "text", p.text, m.tab) or nil
       m.hero = p.hero and D.Call(d, "hero", p.hero, m.tab) or nil
+      m.icons = p.icons and D.Call(d, "icons", p.icons, m.tab) or nil
+      if type(m.icons) ~= "table" then m.icons = nil end
+      local lines = {}
+      for i, l in ipairs(m.icons or {}) do lines[i] = #l end
       if p.tick then D.ticking = true end
       m.say = p.say and D.Call(d, "say", p.say, m.tab) or nil
       m.view = { kind = "page", find = m.find and true or nil, boxes = #m.boxes, tabs = #m.tabs, rows = #m.rows, keys = #m.keys, big = m.big and true or nil,
-        say = m.say and true or nil, hero = m.hero and true or nil, textLines = m.text and math.max(1, math.ceil(#m.text / D.Letters())) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
+        say = m.say and true or nil, hero = m.hero and true or nil, number = type(m.hero) == "table" and m.hero.art == "number" or nil, icons = #lines > 0 and lines or nil, textLines = m.text and math.max(1, math.ceil(#m.text / D.Letters())) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
     end
   end
   return m
@@ -604,12 +608,12 @@ end
 
 -- THE SKIN ----------------------------------------------------------------------------------------------------------
 
-local CLICK = { out = 1, close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, hero = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
+local CLICK = { icon = 1, out = 1, close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, hero = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
   link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, appprev = 1, appnext = 1, cardout = 1, cardend = 1, less = 1, plus = 1, side = 1, morecards = 1 }
 local LOOK = {                                            -- kind -> ground colour, alpha
   card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, out = { "sunken", 0.8 }, appprev = { "sunken", 0.8 }, appnext = { "sunken", 0.8 }, row = { "sunken", 0.55 }, find = { "sunken", 1 },
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
-  hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
+  icon = { "card", 1 }, hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
   cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "card", 1 }, railapp = { "card", 1 },
 }
 
@@ -648,6 +652,7 @@ local function piece(parent)
     if tip and GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetText(tip, 1, 1, 1, 1, true)
+      for _, x in ipairs(self.tips or {}) do GameTooltip:AddDoubleLine(tostring(x[1]), tostring(x[2]), 0.78, 0.75, 0.87, 1, 1, 1) end   -- art: the game's own tooltip
       GameTooltip:Show()
     end
   end)
@@ -1096,12 +1101,48 @@ function D.HERO.model(w, o, h)
   end
   if (f.modelTry or 9) < 5 and (ask(v.GetModelFileID, v) or 0) == 0 then D.ticking = true end
 end
+--- ONE HUGE NUMBER (Arn, 22 Nov, Combo: "DPS number huge of current selected set up, all the break down numbers when hover over it"):
+--- h.small over it, h.right and h.under at its right, h.lines = { { left, right }, ... } on hover.
+function D.HERO.number(w, o, h)
+  if not w.e1 then w.e1 = text(w, 12) end
+  say(w.b, h.right or "", 13, h.rightInk or "ink2", "RIGHT")
+  say(w.e1, h.under or "", 11, "ink2", "RIGHT")
+  fit(w.c, h.small or "", { 12, 11, 10, 9 }, "accent", nil, o.w - 16)
+  local side = math.max(wide(w.b) or #tostring(h.right or "") * 7, wide(w.e1) or #tostring(h.under or "") * 6)
+  fit(w.a, h.big or "-", o.h >= 80 and { 56, 48, 40, 32, 24 } or { 38, 32, 26, 22 }, h.ink or "ink", nil, math.max(40, o.w - side - 30))
+  w.e1:ClearAllPoints()
+  w.e1:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -10, 8)
+  w.e1:Show()
+end
+--- A line of icons (page.icons = fn(tab) -> { { icon, ... }, { icon, ... } }, icon = { pic, word = its small name, act = button, lit,
+--- tip }): each a picture with its name under it; a press does its button.
+function PAINT.icon(w, o, m)
+  local b = m.icons[o.line] and m.icons[o.line][o.i] or {}
+  if b.pic then
+    if not w.pic then
+      w.pic = w:CreateTexture(nil, "ARTWORK")
+      w.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    if w.pic.art ~= b.pic then w.pic.art = b.pic w.pic:SetTexture(b.pic) end
+    w.pic:ClearAllPoints()
+    w.pic:SetPoint("TOP", w, "TOP", 0, -3)
+    w.pic:SetSize(o.h - 18, o.h - 18)
+    if w.pic.SetDesaturated then w.pic:SetDesaturated(false) end
+    w.pic:SetAlpha(b.done and 0.45 or 1)
+    w.pic:Show()
+  end
+  say(w.a, b.pic and "" or "-", 15, "dim", "CENTER")
+  fit(w.c, b.word or "", { 10, 9, 8 }, b.lit and "ink" or "ink2", "CENTER", o.w - 2)
+  w.act = press(m.def, b.act)
+  w.tip, w.lit = b.tip, b.lit and true or nil
+  if D.IsSecure(b.act) then w.sec, w.secDef = b.act, m.def end
+end
 function PAINT.hero(w, o, m)
   local h = m.hero
   if type(h) ~= "table" or not D.HERO[h.art or "radio"] then return end
   D.HERO[h.art or "radio"](w, o, h)
   w.act = h.fn and press(m.def, { fn = h.fn, peek = h.peek }) or nil
-  w.tip = h.tip
+  w.tip, w.tips, w.heroArt = h.tip, h.lines, h.art
 end
 function PAINT.say(w, o, m) say(w.a, m.say or "", 11, "ink2") end
 function PAINT.text(w, o, m) say(w.a, m.text or "", 12, "ink2") end
@@ -1207,6 +1248,13 @@ local function words(w, o)
     w.a:SetPoint("TOPLEFT", w, "TOPLEFT", o.kind == "text" and 8 or 0, o.kind == "text" and -5 or 0) w.a:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", o.kind == "text" and -8 or 0, 0)
   elseif o.kind == "switch" or o.kind == "slider" or o.kind == "stephead" then
     w.a:SetPoint("LEFT", w, "LEFT", o.kind == "stephead" and 0 or 8, 0) w.b:SetPoint("RIGHT", w, "RIGHT", o.kind == "stephead" and 0 or -8, 0)
+  elseif o.kind == "icon" then
+    w.a:SetPoint("TOP", w, "TOP", 0, -10)
+    w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 0, 3) w.c:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", 0, 3)
+  elseif o.kind == "hero" and w.heroArt == "number" then
+    w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 10, -6)
+    w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 9, 4)
+    w.b:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -10, 24)
   elseif o.kind == "hero" then
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 10, -8) w.c:SetPoint("TOPRIGHT", w, "TOPRIGHT", -62, -8)
     w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 10, -24) w.a:SetPoint("TOPRIGHT", w, "TOPRIGHT", -10, -24)
@@ -1518,7 +1566,8 @@ function D.Paint()
     if w.a.SetMaxLines and w.most ~= most then w.most = most pcall(w.a.SetMaxLines, w.a, most) w.a.said = nil end
     if w.pic then w.pic:Hide() end
     if w.v then w.v:Hide() w.vb:Hide() end
-    w.chip = nil
+    if w.e1 then w.e1:Hide() end
+    w.chip, w.tips, w.heroArt = nil, nil, nil
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)
     w:SetSize(o.w, o.h)

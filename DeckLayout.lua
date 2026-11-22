@@ -45,7 +45,7 @@ local L = {
   -- the icons are the largest of these with which ALL of them fit; the last one is a quarter: the picture, its name very small
   -- (Arn, 22 Nov: "apps maybe 1/4 of their size? its just a button but there is room for a lot more apps there"; "small names on the new small icons")
   APP_SIZES = { { 105, 102, 1.7 }, { 87, 84, 1.4 }, { 74, 72, 1.2 }, { 62, 60, 1 }, { 44, 46, 0.75 }, { 36, 42, 0.6, bare = true } },
-  HERO_MIN = 70, HERO_SHARE = 0.28,
+  HERO_MIN = 70, HERO_SHARE = 0.28, NUMBER = 86, NUMBER_MIN = 58, ICON_H = 48,      -- a picture; one huge number; a line of icons with their names
   MAX_CARDS = 6,
   HIT = 24,                                      -- nothing to click is smaller than this (Arn, 22 Nov: "easy for people with accessibility")
 }
@@ -434,13 +434,24 @@ end
 
 -- the line under a list: as many lines as it says (three at most)
 local function sayHigh(v, w) return L.SAY * max(1, min(3, ceil((v.sayN or 0) * 5.4 / max(1, w - 4)))) end
+--- Lines of icons (v.icons = how many in each), from the top down, while `keep` is left under them.
+local function iconLines(c, v, keep)
+  for line, n in ipairs(v.icons or {}) do
+    if n > 0 and c:left() >= L.ICON_H + L.GAP + keep then
+      local y = c.y0
+      c.y0 = y + L.ICON_H + L.GAP
+      local each = (c.w - (n - 1) * L.GAP) / n
+      for i = 1, n do c.out[#c.out + 1] = { kind = "icon", i = i, line = line, x = c.x + (i - 1) * (each + L.GAP), y = y, w = each, h = L.ICON_H } end
+    end
+  end
+end
 local function page(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
   local y = head(out, x, 6, W, true, sw, v)
   local bottom = foot(out, x, h - 5, W, sw, v)
   local nb = on(sw, "boxes") and (v.boxes or 0) or 0
   local nt = on(sw, "tabs") and (v.tabs or 0) or 0
-  local hero = v.hero and on(sw, "hero")
+  local hero = v.hero and (v.number or on(sw, "hero"))       -- (a number is not a picture: always there)
   if T.DeckShape(w, h) == "landscape" then
     if (v.apps or 0) > 0 and W >= 560 then
       local nx = rail(out, v.apps, x, y, bottom - y, v.appSkip, W >= L.RAIL_PAGE)
@@ -463,6 +474,8 @@ local function page(out, v, w, h, sw)
       if nt > 0 and c:left() >= L.TAB_H then local ty = c.y0 c.y0 = ty + L.TAB_H + L.GAP spread(out, "tab", nt, x, ty, W, L.TAB_H) end
       if v.find and c:left() >= L.TAB_H then c:top("find", L.TAB_H) end
     end
+    if hero and v.number and c:left() >= L.NUMBER_MIN then c:top("hero", c:left() >= L.NUMBER + L.BOX_H and L.NUMBER or L.NUMBER_MIN) hero = nil end
+    iconLines(c, v, 0)
     if nb > 0 and c:left() >= L.BOX_H then
       c.y0 = c.y0 + boxLines(out, nb, x, c.y0, W, 62, c:left() >= 2 * (L.BOX_H + L.GAP) + L.LINE)
     end
@@ -477,7 +490,11 @@ local function page(out, v, w, h, sw)
   -- what the list needs to be worth having; the picture takes what is over
   local need = (v.rows or 0) > 0 and 4 * (L.ROW + 2) or 0
   local mids = (nb > 0 and L.BOX_H + L.GAP or 0) + (nt > 0 and L.TAB_H + L.GAP or 0) + (v.find and L.TAB_H + L.GAP or 0) + ((v.strip and on(sw, "strip")) and L.STRIP + L.GAP or 0)
-  if hero then
+  if hero and v.number then
+    local left = c:left()
+    if left >= L.NUMBER_MIN + need then c:top("hero", left >= L.NUMBER + need + mids + 2 * L.ICON_H and L.NUMBER or L.NUMBER_MIN) end
+    iconLines(c, v, need + mids)
+  elseif hero then
     local room = c:left() - need - mids
     if room >= L.HERO_MIN then c:top("hero", min(floor(h * L.HERO_SHARE), room - L.GAP)) end
   end

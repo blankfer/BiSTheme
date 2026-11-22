@@ -22,6 +22,8 @@ local VIEWS = {
   long = { kind = "page", say = true, sayN = 130, rows = 30, keys = 2, big = true, apps = 12, titleN = 14, kickN = 18, lens = function(i) return i % 3 == 0 and 60 or 8, 40 end },
   tour = { kind = "steps", steps = 2, textLines = 3, note = true, titleN = 9, kickN = 15, lens = function() return 95, 8 end },
   huge = { kind = "page", say = true, rows = 9, keys = 2, apps = 12, lens = function(i) return 400, 40 end },
+  number = { kind = "page", number = true, hero = true, icons = { 4, 3 }, rows = 8, tabs = 4, keys = 3, big = true, say = true, apps = 12 },
+  numberOpen = { kind = "page", number = true, hero = true, icons = { 4, 4 }, boxes = 8, rows = 8, tabs = 4, keys = 3, big = true, say = true, apps = 12 },
   subs = { kind = "page", say = true, rows = 30, boxes = 4, tabs = 4, keys = 2, apps = 12, lens = function(i) return 8, 40, i % 4 > 0 or nil end },
   longSteps = { kind = "steps", steps = 9, textLines = 2, titleN = 30, kickN = 18, lens = function(i) return i % 2 == 0 and 70 or 8, 40 end },
   outLong = { kind = "page", win = true, rows = 12, titleN = 14, kickN = 18, lens = function() return 70, 0 end },
