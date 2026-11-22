@@ -814,6 +814,98 @@ do
   D.sorted = nil D.page = "home"
 end
 
+-- CARD SIZES, DRAWN (Arn, 22 Nov: "smarty size them for live cards")
+do
+  local t0 = 5000
+  _G.GetTime = function() return t0 end
+  local pA, pB = 9, 1
+  local function mk(key, prio, list, btn) D.Register{ owner = "BiSSize", key = key, name = key:upper(), order = 1, card = { prio = prio, lines = function() return { key:upper(), "", "words of " .. key, "42", "gold", list = list } end, buttons = btn and function() return { { word = "GO", fn = function() end } } end }, page = { rows = function() return {} end } } end
+  for id in pairs(D.defs) do D.Store().apps[id] = false end
+  mk("a", function() return pA end, { { "one", "1" }, { "two", "2" }, { "three" }, { "four" } }, true)
+  mk("b", function() return pB end, { { "x", "y" } }, true)
+  for i = 1, 3 do mk("q" .. i, function() return 0.5 end) end
+  D.sizeHeld, D.cardSkip = nil, nil
+  D.page = "home" D.Show() D.Flip("portrait") D.Size(280, 620)
+  local function card(title) for i = 1, count("card") do local w = find("card", i) if w.c.text and w.c.text:find(title, 1, true) then return w end end end
+  ok(card("A") and card("A").h > 100 and count("cardline") == 3 and find("cardline", 2).a.text == "two" and find("cardline", 2).b.text == "2", "the urgent one is large, with three of its lines", count("cardline"))
+  ok(card("Q1").w < 150 and card("Q1").a.text == "42" and card("Q1").b.text == "", "a quiet one: half a row, its number", card("Q1").a.text)
+  -- every piece of a card is inside it and nothing covers another's words
+  for _, p in ipairs(D.frame.pieces) do
+    if p.shown and (p.kind == "cardline" or p.kind == "cardbtn") then
+      local inside = false
+      for i = 1, count("card") do local c = find("card", i) local px, py, cx2, cy2 = p.pts[1][4], -p.pts[1][5], c.pts[1][4], -c.pts[1][5] if px >= cx2 and py >= cy2 and px + p.w <= cx2 + c.w + 0.01 and py + p.h <= cy2 + c.h + 0.01 then inside = true end end
+      ok(inside, p.kind .. " stays inside its card")
+    end
+  end
+  local lastLine, firstBtn = 0, 9999
+  for _, p in ipairs(D.frame.pieces) do if p.shown and p.kind == "cardline" then lastLine = math.max(lastLine, -p.pts[1][5] + p.h) end if p.shown and p.kind == "cardbtn" then firstBtn = math.min(firstBtn, -p.pts[1][5]) end end
+  ok(lastLine <= firstBtn, "its lines end above its buttons", lastLine .. " " .. firstBtn)
+  -- it does not breathe
+  pA, pB = 1, 9 D.Paint()
+  ok(card("A").h > 100, "the sizes hold for ten seconds", card("A").h)
+  t0 = t0 + 11 D.Paint() t0 = t0 + 11 D.Paint()
+  ok(card("B").h > card("A").h, "then the urgent one is the large one", card("B").h .. " " .. card("A").h)
+  -- your own pick
+  D.Open("BiSDeck:apps") click(find("tab", 2)) D.Size(320, 760)
+  local rowB
+  for i = 1, count("row") do if find("row", i).a.text == "B" then rowB = i end end
+  local side
+  for _, p in ipairs(D.frame.pieces) do if p.shown and p.kind == "side" and rowB and p.pts[1][5] == find("row", rowB).pts[1][5] then side = p end end
+  ok(side and side.a.text == "AUTO", "Apps > CARDS: its size", side and side.a.text)
+  click(side) ok(D.SizePick("BiSSize:b") == "S", "a click: small")
+  D.page = "home" D.Size(280, 620)
+  ok(card("B").w < 150, "and it is", card("B").w)
+  for _ = 1, 3 do D.SetSize("BiSSize:b", "auto") end
+  ok(D.Store().cardSize["BiSSize:b"] == nil, "auto again")
+  -- more than fit
+  for i = 4, 9 do mk("q" .. i, function() return 4 end) end
+  D.sizeHeld = nil D.Paint()
+  ok(count("card") <= 6 and count("morecards") == 1 and find("morecards").a.text:find("MORE CARDS", 1, true), "six at most, the rest behind MORE", count("card"))
+  local seen = {}
+  for _ = 1, 8 do for i = 1, count("card") do seen[find("card", i).c.text] = true end if not find("morecards") or find("morecards").a.text == "BACK TO THE FIRST" then break end click(find("morecards")) end
+  local ns = 0 for _ in pairs(seen) do ns = ns + 1 end
+  ok(ns == 11, "and all of them can be reached", ns)
+  if find("morecards") then click(find("morecards")) end
+  ok(D.cardSkip == nil, "BACK TO THE FIRST")
+  for _, shape in ipairs({ "landscape", "portrait" }) do D.Flip(shape) for _, s in ipairs({ { 220, 300 }, { 300, 700 }, { 430, 300 }, { 900, 620 } }) do D.W, D.H, D.shape = s[1], s[2], T.DeckShape(s[1], s[2]) local okP, why = pcall(D.Paint) ok(okP, "draws " .. s[1] .. "x" .. s[2], why) end end
+  D.shape = "portrait" D.Flip("portrait")
+  for id in pairs(D.defs) do if id:find("^BiSSize:") then D.defs[id] = nil end end
+  D.sorted, D.sizeHeld, D.cardSkip = nil, nil, nil
+  D.Store().apps, D.Store().cardSize = {}, nil
+  local clock = 90000
+  _G.GetTime = function() clock = clock + 5 return clock end
+end
+
+-- THE RADIO (Arn, 22 Nov: "this is going to be fun for fm a radio on the phone ... Make it dope")
+do
+  local now2, pressed3 = 700, 0
+  _G.GetTime = function() return now2 end
+  local h = { art = "radio", big = "Ironforge Intro", small = "IRONFORGE", left = "0:20", right = "1:26", frac = 0.25, ticks = 30, at = 12, on = true, fn = function() pressed3 = pressed3 + 1 end, peek = true }
+  D.Register{ owner = "BiSRadio", key = "fm", name = "FM", page = { tick = true, hero = function() return h end, rows = function() return { { text = "a song" } } end, big = function() return { word = "STOP", fn = function() end } end } }
+  D.Open("BiSRadio:fm") D.Flip("portrait") D.Size(280, 520)
+  local w = find("hero")
+  ok(w and w.a.text == "Ironforge Intro" and w.c.text == "IRONFORGE" and w.b.text == "0:20  /  1:26", "the radio: the song, where from, the time", w and w.b.text)
+  for _, t in pairs(w.bits) do if t.shown then ok(t.pts[1][4] >= 0 and t.pts[1][4] + t.w <= w.w + 0.01 and -t.pts[1][5] >= 0 and -t.pts[1][5] + t.h <= w.h + 0.01, "it stays inside its place", t.pts[1][4] .. " " .. t.pts[1][5]) end end
+  local needle = w.bits[3].pts[1][4]
+  local eq = {} for i = 1, 9 do eq[i] = w.bits[80 + i].h end
+  h.at = 25 now2 = now2 + 1 tick(1.2)
+  ok(find("hero").bits[3].pts[1][4] > needle, "another station: the needle moves")
+  local moved = 0 for i = 1, 9 do if w.bits[80 + i].h ~= eq[i] then moved = moved + 1 end end
+  ok(moved > 3, "it plays: the bars step with the seconds", moved)
+  local made0 = #made now2 = now2 + 1 D.Paint() ok(#made == made0, "nothing new is made", #made - made0)
+  h.on = false now2 = now2 + 1 D.Paint() local flat = true for i = 1, 9 do if w.bits[80 + i].h ~= 2 then flat = false end end ok(flat, "silent: flat")
+  click(find("hero")) ok(pressed3 == 1, "a click on it plays / stops")
+  h.ticks, h.at, h.frac, h.big = 1, 99, 7, nil ok(pcall(D.Paint), "odd numbers: no error")
+  for _, sz in ipairs({ { 220, 300 }, { 300, 700 }, { 430, 300 }, { 1200, 760 } }) do D.W, D.H, D.shape = sz[1], sz[2], T.DeckShape(sz[1], sz[2]) ok(pcall(D.Paint), "draws " .. sz[1]) end
+  D.Flip("portrait")
+  D.page = "home" D.Paint()
+  local left = 0 for _, p in ipairs(D.frame.pieces) do if p.kind ~= "status" and p.kind ~= "clock" and p.shown then for _, t in pairs(p.bits or {}) do if t.shown then left = left + 1 end end end end
+  ok(left == 0, "another page: none of it is left", left)
+  D.defs["BiSRadio:fm"] = nil D.sorted = nil
+  local clock = 190000
+  _G.GetTime = function() clock = clock + 5 return clock end
+end
+
 -- THE THEMES (Arn, 22 Nov: the clean dark one first; Ryan-Gosling-mode is one you turn on; "other people can change the theme")
 do
   local function hexOf(th, name) return th.hex[name] or T.hex[name] end

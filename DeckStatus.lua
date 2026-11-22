@@ -158,6 +158,7 @@ local function line(w, i, x1, y1, x2, y2, thick, colour)
   l:SetVertexColor(r, g, b, 1)
   l:Show()
 end
+D.Bits = { bar = bar, line = line }                        -- (Deck.lua's radio draws with the same)
 --- A piece is used again for something else: its signs go.
 function D.NoSigns(w)
   for _, t in pairs(w.bits or {}) do t:Hide() end

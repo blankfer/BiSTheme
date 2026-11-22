@@ -9,11 +9,13 @@
   AN ADDON HANDS IN DATA, NEVER A FRAME - that is its API:
     local H = BiSTheme.Deck.Register{
       owner = "BiSTools", key = "bosses", name = "Bosses", icon = "Bo", order = 10,
-      card = { prio = fn -> number | nil (nil = no card now), lines = fn -> { title, note, value, right, ink, hot = true },
+      card = { prio = fn -> number | nil (nil = no card now), lines = fn -> { title, note, value, right, ink, hot = true, list = { { left, right }, ... } (a large card's own lines, three at most) },
                buttons = fn -> { { word, fn }, ... }, profiles = { Dungeon = true } },
       page = { title = fn, kicker = fn, boxes = fn -> { { word, value, ink } }, tabs = fn -> { "BOSSES", "QUESTS" },
                rows = fn(tab) -> { { text, right, mark, ink, done, act = button } }, big = fn -> button, keys = fn -> { button },
-               text = fn -> string, say = fn -> string, steps = fn -> { { phase, text, note, button, done } } },
+               text = fn -> string, say = fn -> string, tick = true (its words change by the second while it is open),
+               hero = fn -> { art = "radio", big, small, left, right, frac 0-1, ticks, at (the needle), on, fn } (ours only: the picture on top),
+               steps = fn -> { { phase, text, note, button, done } } },
       dock = { word = "FIND", fn = fn, hot = fn }, badge = fn -> number, store = fn -> table (its own saved table),
       card.when = "news" (default: it comes by itself when prio answers) | "use" (only after you did something in the app - opening
         it and leaving is a peek), card.alive = fn -> is there still something to show?, card.tick = true (its words change by
@@ -343,6 +345,36 @@ function D.Cards()
   table.sort(out, function(a, b) if a.p ~= b.p then return a.p > b.p end return a.i < b.i end)
   return out
 end
+-- HOW BIG (DeckLayout's T.DeckCards decides; here: what it is told). A card keeps the size it has for D.SIZE_HOLD seconds, so the
+-- deck does not breathe; your own pick (Apps > CARDS) is kept for good.
+D.SIZES = { "auto", "S", "M", "L" }
+D.SIZE_HOLD = 10
+function D.SizePick(id)
+  local st = D.Store()
+  local s = type(st.cardSize) == "table" and st.cardSize[id]
+  return (s == "S" or s == "M" or s == "L") and s or "auto"
+end
+function D.SetSize(id, size)
+  local st = D.Store()
+  st.cardSize = type(st.cardSize) == "table" and st.cardSize or {}
+  st.cardSize[id] = size ~= "auto" and size or nil
+  D.sizeHeld = nil
+  D.Save()
+  D.Dirty(true)
+end
+function D.CardSizes(cards)
+  local out, t = {}, GetTime and ask(GetTime) or 0
+  for i, c in ipairs(cards) do
+    local pick = D.SizePick(c.def.id)
+    local held = D.sizeHeld and D.sizeHeld[c.def.id]
+    local size = pick ~= "auto" and pick or nil
+    if c.slot then size = "M"
+    elseif not size and held and held.at + D.SIZE_HOLD > t and held.n == #cards then size = held.size end
+    local list = c.lines and c.lines.list
+    out[i] = { p = c.p, lines = type(list) == "table" and #list or 0, btn = not c.slot and #(c.buttons or {}) > 0, size = size }
+  end
+  return out
+end
 local function dockList()
   local st, out = D.Store(), {}
   for _, d in ipairs(sorted()) do if d.dock and st.apps[d.id] ~= false then out[#out + 1] = d end end
@@ -367,7 +399,8 @@ function D.Model()
   if m.page == "home" then
     m.cards, m.dock = D.Cards(), dockList()
     for _, c in ipairs(m.cards) do if c.def.card.tick and not c.slot then D.ticking = true end end
-    m.view = { kind = "home", cards = #m.cards, apps = #m.apps, dock = #m.dock, appSkip = D.appSkip }
+    if (D.cardSkip or 0) >= #m.cards then D.cardSkip = nil end
+    m.view = { kind = "home", cards = D.CardSizes(m.cards), apps = #m.apps, dock = #m.dock, appSkip = D.appSkip, cardSkip = D.cardSkip }
     m.title, m.kicker = "BiS>", (D.profile or "") .. (D.Store().pin and " - pinned" or "")
   elseif m.page == "switches" then
     local groups = {}
@@ -410,9 +443,11 @@ function D.Model()
       m.boxes = p.boxes and D.Call(d, "boxes", p.boxes) or {}
       m.rows = p.rows and D.Call(d, "rows", p.rows, m.tab) or {}
       m.text = p.text and D.Call(d, "text", p.text) or nil
+      m.hero = p.hero and D.Call(d, "hero", p.hero) or nil
+      if p.tick then D.ticking = true end
       m.say = p.say and D.Call(d, "say", p.say) or nil
       m.view = { kind = "page", boxes = #m.boxes, tabs = #m.tabs, rows = #m.rows, keys = #m.keys, big = m.big and true or nil,
-        say = m.say and true or nil, textLines = m.text and math.max(1, math.ceil(#m.text / 46)) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
+        say = m.say and true or nil, hero = m.hero and true or nil, textLines = m.text and math.max(1, math.ceil(#m.text / 46)) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
     end
   end
   return m
@@ -463,13 +498,13 @@ end
 
 -- THE SKIN ----------------------------------------------------------------------------------------------------------
 
-local CLICK = { close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
-  link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1, cardout = 1, cardend = 1, less = 1, plus = 1 }
+local CLICK = { close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, hero = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
+  link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1, cardout = 1, cardend = 1, less = 1, plus = 1, side = 1, morecards = 1 }
 local LOOK = {                                            -- kind -> ground colour, alpha
   card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 },
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
-  cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, grip = { "line", 0 }, app = { "line", 0 }, railapp = { "line", 0 },
+  cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "line", 0 }, railapp = { "line", 0 },
 }
 
 local function text(parent, size, colour)
@@ -600,8 +635,14 @@ function PAINT.card(w, o, m)
   local c = m.cards[o.i]
   local l = c and c.lines or {}
   say(w.c, (l.hot and "! " or "") .. (l[1] or ""), 11, "accent")        -- (never by colour alone: the gold bar and a mark)
-  say(w.a, l[3] or "", 16, "ink")
-  say(w.b, l[4] or "", 15, l[5] or "ink2", "RIGHT")
+  if o.size == "S" then
+    local short = l[4] ~= nil and l[4] ~= "" and l[4] or l[3] or ""
+    say(w.a, short, 15, l[4] ~= nil and l[4] ~= "" and l[5] or "ink")
+    w.tip = l[3] ~= nil and l[3] ~= "" and tostring(l[1] or "") .. ": " .. tostring(l[3]) or nil
+  else
+    say(w.a, l[3] or "", 16, "ink")
+    say(w.b, l[4] or "", 15, l[5] or "ink2", "RIGHT")
+  end
   w.hot = l.hot
   if c and not c.slot and D.PinOut then w.dragId = c.def.id end
   if c and (c.def.page or c.def.open) then w.act = function() D.Open(c.def.id) end end
@@ -620,6 +661,19 @@ function PAINT.app(w, o, m)
   w.tip = (d.name or d.key) .. (({ off = " - off: what it is, and a button to turn it on", missing = " - you do not have it: what it is", dev = " - a tool of ours" })[state] or "")
 end
 PAINT.railapp = PAINT.app
+function PAINT.morecards(w, o, m)
+  local n = o.i or 0
+  say(w.a, n > 0 and (n .. " MORE CARDS") or "BACK TO THE FIRST", 11, "accent", "CENTER")
+  w.act = function()
+    local at = (D.cardSkip or 0) + math.max(1, o.n or 1)
+    D.cardSkip = n > 0 and at < #m.cards and at or nil
+    D.Dirty(true)
+  end
+end
+function PAINT.cardline(w, o)
+  say(w.a, o.left or "", 12, "ink2")
+  say(w.b, o.right or "", 12, "ink2", "RIGHT")
+end
 function PAINT.moreapps(w, o, m)
   say(w.a, "MORE", 11, "accent", "CENTER")
   w.act = function()
@@ -654,7 +708,7 @@ function PAINT.row(w, o, m)
   say(w.b, r.right or "", 11, r.ink or "ink2", "RIGHT")
   w.act = press(m.def, r.act)
   w.tip = r.tip
-  w.keys = (r.less or r.more) and true or nil
+  w.keys = (r.less or r.more or r.side) and true or nil
 end
 local function button(w, b, def, size)
   local sec = D.IsSecure(b)
@@ -664,6 +718,41 @@ local function button(w, b, def, size)
 end
 function PAINT.big(w, o, m) button(w, m.big, m.def, 16) end
 function PAINT.key(w, o, m) button(w, m.keys[o.i], m.def, 12) end
+--- The picture on top of a page. One kind so far: a RADIO - the song big, the dial with its needle, the time, bars that step once
+--- a second while it plays (never faster, none in a fight: the deck is not painted then).
+D.HERO = {}
+function D.HERO.radio(w, o, h)
+  local bar, rgbx = D.Bits and D.Bits.bar, rgb
+  say(w.c, h.small or "", 11, "accent")
+  say(w.a, h.big or "", 18, "ink")
+  say(w.b, (h.left or "") .. ((h.left and h.right) and "  /  " or "") .. (h.right or ""), 11, "ink2", "RIGHT")
+  if not bar then return end
+  local W, H, pad = o.w, o.h, 10
+  -- how far: a thin line under the words
+  local y = math.floor(H * 0.62)
+  bar(w, 1, pad, y, W - 2 * pad, 2, "line2")
+  if (h.frac or 0) > 0 then bar(w, 2, pad, y, math.max(2, (W - 2 * pad) * math.min(1, h.frac)), 2, "accent") end
+  -- the dial: a tick a station, the needle on ours
+  local n, base = math.max(2, math.min(60, h.ticks or 12)), H - 9
+  for i = 1, n do
+    local long = (i - 1) % 5 == 0
+    bar(w, 10 + i, pad + (W - 2 * pad - 1) * (i - 1) / (n - 1), base - (long and 10 or 6), 1, long and 10 or 6, long and "ink2" or "line2")
+  end
+  bar(w, 3, pad + (W - 2 * pad - 2) * ((math.max(1, math.min(n, h.at or 1)) - 1) / (n - 1)), base - 15, 2, 17, "gold")
+  -- the bars, top right
+  local t = math.floor(GetTime and ask(GetTime) or 0)
+  for i = 1, 9 do
+    local high = h.on and 3 + ((t * 7 + i * i * 5 + (t % 3) * i) % 13) or 2
+    bar(w, 80 + i, W - pad - 9 * 5 + (i - 1) * 5, 10 + 16 - high, 3, high, h.on and (high > 11 and "gold" or "accent") or "line2")
+  end
+end
+function PAINT.hero(w, o, m)
+  local h = m.hero
+  if type(h) ~= "table" or not D.HERO[h.art or "radio"] then return end
+  D.HERO[h.art or "radio"](w, o, h)
+  w.act = h.fn and press(m.def, { fn = h.fn, peek = h.peek }) or nil
+  w.tip = h.tip
+end
 function PAINT.say(w, o, m) say(w.a, m.say or "", 11, "ink2") end
 function PAINT.text(w, o, m) w.a:SetWordWrap(true) say(w.a, m.text or "", 12, "ink2") end
 function PAINT.stephead(w, o, m) local s = m.steps[m.cur] say(w.a, "STEP " .. m.cur .. " - " .. tostring(s.phase or ""), 11, "accent") say(w.b, s.isDone and "done" or "watching", 11, "dim", "RIGHT") end
@@ -732,11 +821,16 @@ D.Kit = { piece = piece, say = say, rgb = rgb }            -- (DeckPins.lua draw
 local function words(w, o)
   w.a:ClearAllPoints() w.b:ClearAllPoints() w.c:ClearAllPoints()
   w.a:SetJustifyV("MIDDLE")
-  if o.kind == "card" then
-    local top = o.btn and 22 or 0
+  if o.kind == "card" and o.size == "S" then
+    w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 8, -5) w.c:SetPoint("TOPRIGHT", w, "TOPRIGHT", -28, -5)
+    w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 8, 5) w.a:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -6, 5)
+  elseif o.kind == "card" then
+    -- (from the top: the kicker, the words and the number; its lines and its buttons come under them)
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 8, -5) w.c:SetPoint("TOPRIGHT", w, "TOPRIGHT", -64, -5)
-    w.b:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -8, 5 + top)
-    w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 8, 5 + top) w.a:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -o.w * 0.38, 5 + top)
+    w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -8, -24)
+    w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 8, -23) w.a:SetPoint("TOPRIGHT", w, "TOPRIGHT", -o.w * 0.38, -23)
+  elseif o.kind == "cardline" then
+    w.a:SetPoint("LEFT", w, "LEFT", 0, 0) w.b:SetPoint("RIGHT", w, "RIGHT", 0, 0) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
   elseif o.kind == "box" then
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 6, -3) w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 6, 2)
   elseif o.kind == "app" then
@@ -751,6 +845,10 @@ local function words(w, o)
     w.a:SetPoint("TOPLEFT", w, "TOPLEFT", o.kind == "text" and 8 or 0, o.kind == "text" and -5 or 0) w.a:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", o.kind == "text" and -8 or 0, 0)
   elseif o.kind == "switch" or o.kind == "slider" or o.kind == "stephead" then
     w.a:SetPoint("LEFT", w, "LEFT", o.kind == "stephead" and 0 or 8, 0) w.b:SetPoint("RIGHT", w, "RIGHT", o.kind == "stephead" and 0 or -8, 0)
+  elseif o.kind == "hero" then
+    w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 10, -8) w.c:SetPoint("TOPRIGHT", w, "TOPRIGHT", -62, -8)
+    w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 10, -24) w.a:SetPoint("TOPRIGHT", w, "TOPRIGHT", -10, -24)
+    w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -10, -math.floor(o.h * 0.62) - 4)
   elseif o.kind == "status" then
     -- (the battery's number is placed where the battery is drawn)
     w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 38, -(math.floor(o.h / 2) - 6)) w.a:SetPoint("BOTTOMRIGHT", w, "TOPLEFT", 63, -(math.floor(o.h / 2) + 7))
@@ -895,6 +993,14 @@ end
 --- A row's - and + (an option with steps): two keys at its right end, the value left of them.
 function D.RowKeys(put, o, m, f)
   local r = m.rows[o.i]
+  if r and r.side then
+    local w = put({ kind = "side", x = o.x + o.w - 50, y = o.y, w = 48, h = o.h })
+    w:SetFrameLevel((f:GetFrameLevel() or 1) + 4)
+    say(w.a, r.side.word or "", 11, "accent", "CENTER")
+    w.act, w.tip = press(m.def, r.side), r.side.tip
+    w:EnableMouse((w.act or w.tip) and not D.fight and true or false)
+    return
+  end
   if not (r and (r.less or r.more)) then return end
   for k, b in ipairs({ r.less, r.more }) do
     local w = put({ kind = k == 1 and "less" or "plus", x = o.x + o.w - (k == 1 and 52 or 26), y = o.y, w = 24, h = o.h })
@@ -919,6 +1025,11 @@ function D.CardKeys(put, o, m, f)
     say(w.a, words, 11, "ink2", "CENTER")
     w.act, w.tip = fn, tip
     w:EnableMouse(not D.fight)
+  end
+  if o.size == "S" then
+    -- (half a row: only x, and only where x means something; a drag still pulls it out, a click opens it)
+    if not c.slot and D.When(c.def) == "use" then key("cardend", "x", 24, function() D.EndLive(c.def) end, "Done with it") end
+    return
   end
   if c.slot then return key("cardout", "BACK", 40, function() D.PinBack(c.def.id) end, "Back into the deck") end
   if D.When(c.def) == "use" then key("cardend", "x", 24, function() D.EndLive(c.def) end, "Done with it") end
@@ -969,7 +1080,21 @@ function D.Paint()
   for _, o in ipairs(boxes) do
     put(o)
     if o.kind == "row" then D.RowKeys(put, o, m, f) end
-    if o.kind == "card" then D.CardKeys(put, o, m, f) end
+    if o.kind == "card" then
+      D.CardKeys(put, o, m, f)
+      local c = m.cards[o.i]
+      if c and not c.slot then
+        D.sizeHeld = D.sizeHeld or {}
+        local was = D.sizeHeld[c.def.id]
+        if not was or was.size ~= o.size or was.n ~= #m.cards then D.sizeHeld[c.def.id] = { size = o.size, n = #m.cards, at = GetTime and ask(GetTime) or 0 } end
+      end
+      local list = c and c.lines and type(c.lines.list) == "table" and c.lines.list or {}
+      for i = 1, math.min(o.lines or 0, #list) do
+        local x = type(list[i]) == "table" and list[i] or { list[i] }
+        local w = put({ kind = "cardline", x = o.x + 8, y = o.y + 46 + (i - 1) * 17, w = o.w - 16, h = 16, left = x[1], right = x[2] })
+        w:SetFrameLevel((f:GetFrameLevel() or 1) + 3)
+      end
+    end
     if o.kind == "card" and o.btn then
       local c = m.cards[o.i]
       local bs = c and c.buttons or {}

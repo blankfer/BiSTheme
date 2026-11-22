@@ -16,7 +16,7 @@
   important part goes (L.DROP, in order), never a smaller letter and never an overlap.
 
   THE VIEW is data a page handed in (Deck.lua asks it), counts only:
-    { kind = "home",  cards = n, apps = n, dock = n }
+    { kind = "home",  cards = n or { { p = urgency, lines = n, size = "S"|"M"|"L"|nil (auto), btn = bool }, ... most urgent first }, apps = n, dock = n }
     { kind = "page",  boxes = n, tabs = n, rows = n, keys = n, big = true, hero = true, say = true, strip = true, textLines = n }
     { kind = "steps", steps = n, textLines = n, note = true, keys = n, hero = true }
     { kind = "switches", groups = { n, n, ... } }           `skip` = how far a list is scrolled (all kinds)
@@ -176,11 +176,58 @@ end
 
 -- THE VIEWS ----------------------------------------------------------------------------------------------------------
 
+--- HOW BIG EACH CARD IS (Arn, 22 Nov: "we need to make all the tools into apps and smarty size them for live cards"): every card
+--- starts S (half a row: a word and a number); the most urgent one grows to L (with its own lines) first, then everything that
+--- says something now (p >= 3) to M (a row, with its buttons), then a second L - always only while the rest still fits. A size
+--- asked for (`size`) is kept. Too many, or no room: the least urgent wait behind MORE. Answers the list, how many are left.
+L.CARD_S, L.CARD_M, L.CARD_LINE, L.CARD_L, L.CARD_LINES, L.CARD_BIG = 44, 76, 17, 82, 3, 2
+local function tall(c) return c.s == "S" and L.CARD_S or c.s == "L" and L.CARD_L + L.CARD_LINE * min(c.lines, L.CARD_LINES) - (c.btn and 0 or L.CARD_BTN) or L.CARD_M - (c.btn and 0 or L.CARD_BTN) end
+local function cardsHigh(list, per)
+  local y, small = 0, 0
+  for _, c in ipairs(list) do if c.s == "S" then small = small + 1 else y = y + tall(c) + L.GAP end end
+  return y + ceil(small / per) * (L.CARD_S + L.GAP)
+end
+function T.DeckCards(cards, w, room, skip)
+  local list, per = {}, max(1, floor((w + L.GAP) / (106 + L.GAP)))
+  for i, c in ipairs(cards) do
+    if i > (skip or 0) then list[#list + 1] = { i = i, p = c.p or 5, lines = c.lines or 0, btn = c.btn ~= false, held = c.size, s = c.size or "S" } end
+  end
+  local rest = 0
+  while #list > 0 and (#list > L.MAX_CARDS or cardsHigh(list, per) > room) do
+    -- the least urgent goes; one whose size you hold only when nothing else is left to go
+    local out
+    for i = #list, 1, -1 do if not list[i].held then out = i break end end
+    table.remove(list, out or #list)
+    rest = rest + 1
+  end
+  local function grow(c, s)
+    local was = c.s
+    c.s = s
+    if cardsHigh(list, per) > room then c.s = was return false end
+    return true
+  end
+  local big = 0
+  for _, c in ipairs(list) do if c.s == "L" then big = big + 1 end end
+  local first = list[1]
+  if first and not first.held and first.lines > 0 and first.p >= 5 and big < L.CARD_BIG and grow(first, "L") then big = big + 1 end
+  for _, c in ipairs(list) do if not c.held and c.s == "S" and c.p >= 3 then grow(c, "M") end end
+  for _, c in ipairs(list) do if not c.held and c.s == "M" and c.p >= 5 and c.lines > 0 and big < L.CARD_BIG and grow(c, "L") then big = big + 1 end end
+  -- (nothing urgent at all: the first still gets its buttons when there is room)
+  if first and not first.held and first.s == "S" then grow(first, "M") end
+  return list, rest, per
+end
+
 local function home(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
   local y = head(out, x, 6, W, false, sw)
   local bottom = foot(out, x, h - 5, W, sw)
-  local nCards = on(sw, "cards") and min(v.cards or 0, L.MAX_CARDS) or 0
+  local cards = v.cards
+  if type(cards) ~= "table" then
+    cards = {}
+    for i = 1, v.cards or 0 do cards[i] = { p = 6 - min(i, 5), lines = 2 } end
+  end
+  if not on(sw, "cards") then cards = {} end
+  local nCards = min(#cards, L.MAX_CARDS)
   local nApps = on(sw, "apps") and (v.apps or 0) or 0
   local nDock = on(sw, "dock") and (v.dock or 0) or 0
   if nDock > 0 and bottom - y >= L.DOCK_H + L.CARD then
@@ -203,29 +250,43 @@ local function home(out, v, w, h, sw)
       local tall = min(ch * 1.8, (bottom - y - (used - 1) * L.GAP) / used)
       ch = max(ch, floor(tall))
       for i = 1, show do
-        out[#out + 1] = { kind = "card", i = i, x = x + ((i - 1) % per) * (each + L.GAP), y = y + floor((i - 1) / per) * (ch + L.GAP), w = each, h = ch, btn = true }
+        local c = cards[i]
+        local lines = c.size == "M" and 0 or min(c.lines or 0, L.CARD_LINES, max(0, floor((ch - L.CARD_L + 4) / L.CARD_LINE)))
+        out[#out + 1] = { kind = "card", i = i, x = x + ((i - 1) % per) * (each + L.GAP), y = y + floor((i - 1) / per) * (ch + L.GAP), w = each, h = ch, btn = c.btn ~= false, size = lines > 0 and "L" or "M", lines = lines }
       end
     end
     return
   end
-  -- portrait: cards on top (with their buttons while there is room for a row of apps under them), then the apps
+  -- portrait: cards on top, then the icons: they get up to three rows, never less than one
   local appsNeed = nApps > 0 and (L.APP_H + L.GAP) or 0
-  local full, bare = L.CARD + L.CARD_BTN + L.GAP, L.CARD + L.GAP
   local per = fit(99, W, L.APP_W)
   local appRows = nApps > 0 and ceil(nApps / per) or 0
-  -- the icons get up to three rows (never less than one); the cards take what is over, the first always with its buttons
   local room = bottom - y - min(appRows, 3) * (L.APP_H + L.GAP)
-  if room < full and appRows > 1 then room = bottom - y - appsNeed end
-  local show = min(nCards, floor(max(room, 0) / bare))
-  local btns = min(show, floor((room - show * bare) / (full - bare)))
-  while show > 1 and btns < 1 do
-    show = show - 1
-    btns = min(show, floor((room - show * bare) / (full - bare)))
+  -- (the cards may take a row or two of icons when they need it: the icons have MORE)
+  if #cards > 0 and cardsHigh((T.DeckCards(cards, W, 9999)), max(1, floor((W + L.GAP) / (106 + L.GAP)))) > room then room = bottom - y - appsNeed end
+  local skip = v.cardSkip or 0
+  if skip >= #cards then skip = 0 end
+  local list, rest, perRow = T.DeckCards(cards, W, room, skip)
+  if (rest > 0 or skip > 0) and #cards > 0 then list, rest, perRow = T.DeckCards(cards, W, room - L.ROW - L.GAP, skip) end
+  local small = {}
+  for _, c in ipairs(list) do
+    if c.s == "S" then small[#small + 1] = c
+    else
+      local ch = tall(c)
+      out[#out + 1] = { kind = "card", i = c.i, x = x, y = y, w = W, h = ch, btn = c.btn, size = c.s, lines = c.s == "L" and min(c.lines, L.CARD_LINES) or 0 }
+      y = y + ch + L.GAP
+    end
   end
-  for i = 1, show do
-    local ch = i <= btns and full or bare
-    out[#out + 1] = { kind = "card", i = i, x = x, y = y, w = W, h = ch - L.GAP, btn = i <= btns }
-    y = y + ch
+  for k, c in ipairs(small) do
+    local col, row = (k - 1) % perRow, floor((k - 1) / perRow)
+    local inRow = min(perRow, #small - row * perRow)
+    local each = (W - (inRow - 1) * L.GAP) / inRow
+    out[#out + 1] = { kind = "card", i = c.i, x = x + col * (each + L.GAP), y = y + row * (L.CARD_S + L.GAP), w = each, h = L.CARD_S, btn = false, size = "S", lines = 0 }
+  end
+  y = y + ceil(#small / perRow) * (L.CARD_S + L.GAP)
+  if (rest > 0 or skip > 0) and bottom - y >= L.ROW + L.GAP + (appsNeed > 0 and appsNeed or 0) then
+    out[#out + 1] = { kind = "morecards", i = rest, n = #list, x = x, y = y, w = W, h = L.ROW }
+    y = y + L.ROW + L.GAP
   end
   appGrid(out, nApps, x, y, W, bottom - y, v.appSkip)
 end

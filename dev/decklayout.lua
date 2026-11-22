@@ -14,6 +14,7 @@ end
 
 local VIEWS = {
   home = { kind = "home", cards = 5, apps = 12, dock = 5 },
+  homeSized = { kind = "home", cards = { { p = 9, lines = 3 }, { p = 6, lines = 2, size = "L" }, { p = 4, size = "S" }, { p = 4, lines = 9, btn = false }, { p = 2 }, { p = 1, size = "M" }, { p = 1 }, { p = 0.5 } }, apps = 22, dock = 5 },
   homeBare = { kind = "home", cards = 0, apps = 3, dock = 0 },
   homeMany = { kind = "home", cards = 12, apps = 40, dock = 9 },
   bosses = { kind = "page", boxes = 3, tabs = 2, rows = 21, keys = 2, big = true, hero = true, say = true, strip = true, apps = 12 },
@@ -48,7 +49,7 @@ local function hit(a, b)
 end
 
 local laid = 0
-local CLICKS = { status = 1, close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1, more = 1, moreapps = 1 }
+local CLICKS = { status = 1, morecards = 1, close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1, more = 1, moreapps = 1 }
 for name, v in pairs(VIEWS) do
   for _, size in ipairs(SIZES) do
     for _, sw in ipairs(SETS) do
@@ -81,13 +82,59 @@ for name, v in pairs(VIEWS) do
   end
 end
 
+-- HOW BIG A CARD IS (22 Nov: "smarty size them for live cards")
+do
+  local function sizes(cards, wide, room)
+    local list, rest = T.DeckCards(cards, wide, room)
+    local s = ""
+    for _, c in ipairs(list) do s = s .. c.s end
+    return s, rest, list
+  end
+  local quiet = { { p = 1 }, { p = 1 } }
+  ok(sizes(quiet, 260, 600) == "MS", "nothing urgent: small, the first keeps its buttons", (sizes(quiet, 260, 600)))
+  local busy = { { p = 9, lines = 3 }, { p = 6, lines = 2 }, { p = 5, lines = 2 }, { p = 4 }, { p = 2 }, { p = 1 } }
+  ok(sizes(busy, 260, 900) == "LLMMSS", "room for all: two large, the ones that say something medium, the quiet ones small", (sizes(busy, 260, 900)))
+  ok(sizes(busy, 260, 300):sub(1, 1) == "L", "little room: the most urgent is large first", (sizes(busy, 260, 300)))
+  for room = 60, 700, 10 do
+    for _, wide in ipairs({ 200, 260, 380 }) do
+      local s, rest, list = sizes(busy, wide, room)
+      local per = math.max(1, math.floor((wide + 4) / 110))
+      local y, small, big = 0, 0, 0
+      for _, c in ipairs(list) do if c.s == "S" then small = small + 1 else if c.s == "L" then big = big + 1 end y = y + (c.s == "L" and 82 + 17 * math.min(3, c.lines) or 76) + 4 end end
+      ok(y + math.ceil(small / per) * 48 <= room and big <= 2 and #list + rest == 6, "never more than fits, never more than two large, none lost", s .. " " .. room .. " " .. rest)
+      for i = 2, #list do ok(list[i].i > list[i - 1].i, "in their order", s) end
+      if #list > 0 then ok(list[1].i == 1, "the most urgent is always there", s) end
+    end
+  end
+  ok(sizes({ { p = 9, lines = 3, size = "S" }, { p = 1, size = "L", lines = 2 } }, 260, 900) == "SL", "a size you hold is kept")
+  local many = {}
+  for i = 1, 11 do many[i] = { p = 5, lines = 1 } end
+  local s, rest = sizes(many, 260, 2000)
+  ok(#s == 6 and rest == 5, "six at most", #s .. " " .. rest)
+  -- MORE reaches every one
+  for _, size in ipairs({ { 220, 391 }, { 280, 498 }, { 300, 700 }, { 220, 300 } }) do
+    local got, at = {}, 0
+    for _ = 1, 30 do
+      local more
+      for _, b in ipairs((T.DeckLayout({ kind = "home", cards = many, apps = 12, dock = 5, cardSkip = at }, size[1], size[2]))) do
+        if b.kind == "card" then got[b.i] = true elseif b.kind == "morecards" then more = b end
+      end
+      if not more then break end
+      at = at + math.max(1, more.n)
+      if at >= 11 then break end
+    end
+    local gone = 0 for i = 1, 11 do if not got[i] then gone = gone + 1 end end
+    ok(gone == 0 or size[2] == 300, "every card can be reached by MORE", size[1] .. "x" .. size[2] .. " missing " .. gone)
+  end
+end
+
 -- portrait and landscape, by the size
 ok(T.DeckShape(324, 576) == "portrait" and T.DeckShape(858, 600) == "landscape", "the shape is the size")
 -- more room = more rows; the words never change size
 local function count(v, w, h, kind) local c = 0 for _, b in ipairs((T.DeckLayout(v, w, h))) do if b.kind == kind then c = c + 1 end end return c end
 ok(count(VIEWS.bosses, 324, 700, "row") > count(VIEWS.bosses, 324, 500, "row"), "taller: more rows")
 ok(count(VIEWS.home, 324, 800, "card") >= count(VIEWS.home, 324, 480, "card"), "taller: no fewer cards")
-ok(count(VIEWS.homeMany, 900, 630, "card") > count(VIEWS.homeMany, 324, 576, "card") , "landscape: more cards", count(VIEWS.homeMany, 900, 630, "card") .. " " .. count(VIEWS.homeMany, 324, 576, "card"))
+ok(count(VIEWS.homeMany, 900, 630, "card") >= count(VIEWS.homeMany, 324, 576, "card") , "landscape: no fewer cards", count(VIEWS.homeMany, 900, 630, "card") .. " " .. count(VIEWS.homeMany, 324, 576, "card"))
 ok(count(VIEWS.bosses, 858, 600, "row") > 0 and count(VIEWS.bosses, 858, 600, "hero") == 1, "landscape: the list and the big picture, side by side")
 ok(count(VIEWS.bosses, 324, 576, "hero") == 1 and count(VIEWS.bosses, 300, 330, "hero") == 0, "portrait: the picture goes first when there is no room")
 -- NOTHING IS OUT OF REACH (22 Nov: the accessibility switches did not fit, and nothing led to them): every row, step and

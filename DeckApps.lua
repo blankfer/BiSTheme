@@ -101,7 +101,12 @@ function D.CardRows()
     if d.card and x[2] ~= "off" and x[2] ~= "missing" then
       local w = D.When(d)
       out[#out + 1] = { mark = w == "off" and "-" or "v", text = d.name or d.key, right = WHEN[w], ink = w == "off" and "dim" or "good", done = w == "off", tip = WHEN_TIP[w],
-        act = { word = "next", fn = function() D.SetWhen(d, w == "use" and "news" or w == "news" and "off" or "use") end } }
+        act = { word = "next", fn = function() D.SetWhen(d, w == "use" and "news" or w == "news" and "off" or "use") end },
+        side = { word = D.SizePick(d.id):upper(), tip = "Its size: auto, small, medium, large", fn = function()
+          local at = 1
+          for i, s in ipairs(D.SIZES) do if s == D.SizePick(d.id) then at = i end end
+          D.SetSize(d.id, D.SIZES[at % #D.SIZES + 1])
+        end } }
     end
   end
   return out
@@ -177,7 +182,7 @@ function D.Apps()
       page = { title = function() return "Apps" end, kicker = function() return "shown on home" end, tabs = function() return { "ICONS", "CARDS", "STORE" } end, rows = function(tab) return tab == 3 and D.StoreRows and D.StoreRows() or tab == 2 and D.CardRows() or D.AppRows() end,
         keys = function() return { { word = "WELCOME", fn = D.Replay, tip = "The welcome and the first-time words again" } } end } }
     D.Register{ owner = "BiSDeck", key = "welcome", name = "Welcome", hidden = true, order = 98,
-      card = { prio = function() if wel().over or wel().no then return nil end return 2 end,
+      card = { prio = function() if wel().over or wel().no then return nil end return 3 end,
         lines = function() local n, all = D.WelcomeDone() return { "WELCOME", "", "Get to know the deck", n .. " / " .. all, "ink2" } end,
         buttons = function() return { { word = "GO ON", fn = function() D.page = "BiSDeck:welcome" end }, { word = "NO THANKS", fn = function() wel().no = true D.Save() end } } end },
       page = { title = function() return "Welcome" end, kicker = function() local n, all = D.WelcomeDone() return n .. " of " .. all end, steps = D.Welcome } }
