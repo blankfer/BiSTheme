@@ -47,6 +47,8 @@ local D = T.Deck or {}
 T.Deck = D
 D.defs = D.defs or {}                                     -- owner:key -> def (kept across copies)
 D.MINOR = MINOR
+D.STRATA, D.FIGHT_STRATA = "HIGH", "LOW"                   -- over the bars and cards (22 Nov: the healing bars drew through it); in a fight under them
+local HOMES = { portrait = { 260, 462 }, landscape = { 600, 420 } }
 D.PROFILES = { "Leveling", "Dungeon", "Raid night", "Town", "PvP" }
 D.BEAT = 1                                                -- seconds between paints of a dirty, shown deck
 D.FIGHT_ALPHA = 0.12
@@ -864,7 +866,7 @@ function D.Build()
   local f = CreateFrame("Frame", "BiSDeck", UIParent)
   f.built = MINOR
   f.pieces = {}
-  f:SetFrameStrata("MEDIUM")
+  f:SetFrameStrata(D.STRATA)
   f:SetClampedToScreen(true)
   f:EnableMouse(true)
   f:SetMovable(true)
@@ -876,6 +878,26 @@ function D.Build()
   if f.EnableMouseWheel then f:EnableMouseWheel(true) end
   f:SetScript("OnMouseWheel", function(_, delta) if not D.fight then D.Scroll(-(delta or 0)) end end)
   f:SetScript("OnHide", function() D.DragEnd() D.Sleep() end)
+  -- THE CORNER IS ITS OWN FRAME, NEVER ONE OF THE PIECES (Arn, 22 Nov, the first look: "when i drag to resize i cant let go" -
+  -- 2466 wide): a piece is another box after the next paint, hidden or deaf, and the client tells the letting go to the frame
+  -- that was pressed. It also never takes a drag (a Button with RegisterForDrag may get OnDragStop in place of OnMouseUp).
+  local c = CreateFrame("Button", nil, f)
+  f.corner = c
+  c:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+  c:SetSize(30, 30)
+  c.wash = c:CreateTexture(nil, "ARTWORK")
+  c.wash:SetAllPoints(c)
+  c.wash:Hide()
+  c:SetScript("OnEnter", function(self)
+    local r, g, b = rgb("accent")
+    self.wash:SetColorTexture(r, g, b, 0.3)
+    self.wash:Show()
+    if GameTooltip then GameTooltip:SetOwner(self, "ANCHOR_LEFT") GameTooltip:SetText("Pull: the size. Double-click: its normal size.") GameTooltip:Show() end
+  end)
+  c:SetScript("OnLeave", function(self) self.wash:Hide() if GameTooltip then GameTooltip:Hide() end end)
+  c:SetScript("OnMouseDown", function(_, b) if not D.fight and (b == nil or b == "LeftButton") then D.GripStart() end end)
+  c:SetScript("OnMouseUp", function() D.GripEnd() end)
+  c:SetScript("OnDoubleClick", function() if not D.fight then D.GripEnd() D.Normal() end end)
   f:Hide()
   D.frame = f
   D.Skin()
@@ -886,6 +908,10 @@ function D.DragEnd()
   if not (f and f.moving) then return end
   f.moving = nil
   pcall(f.StopMovingOrSizing, f)
+  D.KeepPlace()
+end
+function D.KeepPlace()
+  local f = D.frame
   local ok, p, _, rp, x, y = pcall(f.GetPoint, f, 1)
   if ok and type(plain(p)) == "string" and type(plain(x)) == "number" then
     local st = D.Store()
@@ -896,15 +922,34 @@ function D.DragEnd()
   end
 end
 
-local HOMES = { portrait = { 260, 462 }, landscape = { 600, 420 } }
+--- As big as the screen lets it be (nil = the client does not say).
+function D.Room()
+  local f = D.frame
+  local u = UIParent or {}
+  local w, h = ask(u.GetWidth, u), ask(u.GetHeight, u)
+  local s = f and ask(f.GetScale, f)
+  if type(w) ~= "number" or type(h) ~= "number" or w < 400 or h < 300 then return nil end
+  if type(s) ~= "number" or s <= 0 then s = D.SCALE end
+  return w / s * 0.9, h / s * 0.94
+end
+function D.Fit(w, h)
+  local rw, rh = D.Room()
+  if rw then
+    local tall = h > w
+    w, h = math.min(w, rw), math.min(h, rh)
+    if tall then w = math.min(w, h - 1) elseif w <= h then h = w - 1 end
+  end
+  return T.DeckClamp(w, h)
+end
+function D.Normal() D.Size(HOMES[D.shape][1], HOMES[D.shape][2]) D.Save() end
 --- The size and place kept for this shape (each shape has its own).
 function D.Place(shape)
   local st, f = D.Store(), D.frame
   st[shape] = type(st[shape]) == "table" and st[shape] or {}
   local s = st[shape]
-  D.W, D.H = T.DeckClamp(s.w or HOMES[shape][1], s.h or HOMES[shape][2])
-  D.shape = shape
   f:SetScale(st.scale or D.SCALE)
+  D.W, D.H = D.Fit(s.w or HOMES[shape][1], s.h or HOMES[shape][2])
+  D.shape = shape
   f:SetSize(D.W, D.H)
   f:ClearAllPoints()
   if type(s.pos) == "table" then f:SetPoint(s.pos[1], UIParent, s.pos[2], s.pos[3], s.pos[4])
@@ -920,7 +965,7 @@ end
 --- A new size (the corner, the sliders): kept for this shape; the corner never turns one shape into the other.
 function D.Size(w, h)
   if D.shape == "portrait" then w = math.min(w, h - 1) else w = math.max(w, h + 1) end
-  w, h = T.DeckClamp(w, h)
+  w, h = D.Fit(w, h)
   local s = D.Store()[D.shape]
   s.w, s.h, D.W, D.H = w, h, w, h
   D.frame:SetSize(w, h)
@@ -1108,34 +1153,47 @@ function D.Paint()
       end
     elseif o.kind == "size" then
       local w = f.pieces[n]
-      w:EnableMouse(not D.fight)
-      if not w.gripped then
-        w.gripped = true
-        w:SetScript("OnMouseDown", function(self) if self.kind == "size" and not D.fight then D.GripStart() end end)
-        w:SetScript("OnMouseUp", function() D.GripEnd() end)
-      end
+      w:EnableMouse(false)                                 -- (drawn here; pressed on f.corner, D.Build)
     end
   end
   for i = n + 1, #f.pieces do f.pieces[i]:Hide() end
+  f.corner:SetFrameLevel((f:GetFrameLevel() or 1) + 8)
+  f.corner:EnableMouse(not D.fight)
   D.dirty = nil
   return n
 end
 
 -- the corner: the mouse's own travel over the deck's scale (the client's StartSizing cannot hold a shape, and sticks to the
 -- mouse when a fight starts)
+-- (pinned by its top left first: held in the middle it would grow both ways, away from the mouse)
 function D.GripStart()
   local f = D.frame
+  D.DragEnd()
+  local l, t = ask(f.GetLeft, f), ask(f.GetTop, f)
+  if type(l) == "number" and type(t) == "number" then
+    f:ClearAllPoints()
+    f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
+  end
   local s = f:GetEffectiveScale()
   local x, y = GetCursorPosition()
-  D.grip = { x = x / s, y = y / s, w = D.W, h = D.H, s = s, at = 0 }
+  D.grip = { x = x / s, y = y / s, w = D.W, h = D.H, s = s, at = 0, pinned = l and t and true }
 end
+--- Is the button still down? (false = let go; nil = the client does not say)
+function D.Held() return ask(IsMouseButtonDown, "LeftButton") end
 function D.GripMove()
   local g = D.grip
   if not g then return end
   local x, y = GetCursorPosition()
   D.Size(g.w + (x / g.s - g.x), g.h + (g.y - y / g.s))
 end
-function D.GripEnd() if D.grip then D.grip = nil D.Save() D.Dirty() end end
+function D.GripEnd()
+  local g = D.grip
+  if not g then return end
+  D.grip = nil
+  if g.pinned then D.KeepPlace() end
+  D.Save()
+  D.Dirty()
+end
 
 --- Something changed: painted at the next beat (`now` = at once), only while shown.
 function D.Dirty(now)
@@ -1237,6 +1295,8 @@ function D.Wake()
   local f, acc, slow = D.frame, 0, 0
   f:SetScript("OnUpdate", function(_, el)
     acc = acc + (el or 0)
+    -- (let go and never told: the button itself says so. A hold may not outlive the press.)
+    if (D.grip or f.moving) and D.Held() == false then D.GripEnd() D.DragEnd() end
     if D.grip then
       if acc >= 0.05 then acc = 0 D.GripMove() end
       return
@@ -1259,6 +1319,7 @@ function D.Fight(on)
   if not f then return end
   if on then D.DragEnd() D.GripEnd() D.Focus(false) end
   f:SetAlpha(on and D.FIGHT_ALPHA or 1)
+  f:SetFrameStrata(on and D.FIGHT_STRATA or D.STRATA)      -- (a fight: under the health bars)
   f:EnableMouse(not on)
   if f:IsShown() then D.Paint() end
 end

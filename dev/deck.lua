@@ -30,6 +30,8 @@ local function node(kind, parent, template)
   function M:GetWidth() return self.w end
   function M:SetAlpha(a) self.alpha = a end
   function M:SetScale(s) self.scale = s end
+  function M:GetScale() return self.scale end
+  function M:SetFrameStrata(s) self.strata = s end
   function M:GetEffectiveScale() return self.scale end
   function M:EnableMouse(v) self.mouse = v and true or false end
   function M:SetFrameLevel(l) self.level = l end
@@ -176,14 +178,60 @@ D.Flip()
 ok(D.W == 300 and D.H == 520 and D.page == "BiSTools:bosses", "and back: its own size, the same page")
 local rowsNow = count("row")
 cx, cy = 100, 100
-find("size").scripts.OnMouseDown(find("size"))
+local corner = D.frame.corner
+corner.scripts.OnMouseDown(corner, "LeftButton")
 cx, cy = 100, -100
 tick(0.1)
 ok(D.H > 520 and count("row") > rowsNow, "the corner pulled down: taller, more rows", D.H)
 cx = 5000 tick(0.1)
 ok(T.DeckShape(D.W, D.H) == "portrait", "the corner never turns tall into wide", D.W .. "x" .. D.H)
-find("size").scripts.OnMouseUp(find("size"))
+corner.scripts.OnMouseUp(corner, "LeftButton")
 ok(D.grip == nil and D.Store().portrait.h == D.H, "let go: kept")
+do  -- Arn's first look, 22 Nov: "when i drag to resize i cant let go"
+  for _, w in ipairs(D.frame.pieces) do if w.scripts.OnMouseDown then ok(false, "a piece never takes the press (it is another box after the paint)", w.kind) end end
+  ok(corner.mouse and corner.level > D.frame.level + 6 and not corner.scripts.OnDragStart, "the corner: its own frame, over the pieces")
+  local down, keepB = true, _G.IsMouseButtonDown
+  _G.IsMouseButtonDown = function() return down end
+  cx, cy = 100, 100
+  corner.scripts.OnMouseDown(corner, "LeftButton")
+  local h0 = D.H
+  cy = 40 tick(0.06)
+  ok(D.grip and D.H ~= h0, "held: it follows")
+  down = false
+  tick(0.06)
+  ok(D.grip == nil, "let go and never told: it ends by itself")
+  local h1 = D.H
+  cy = -400 tick(0.2)
+  ok(D.H == h1, "and the mouse moves on alone")
+  corner.scripts.OnMouseDown(corner, "RightButton") ok(D.grip == nil, "the other button: nothing")
+  -- the deck dragged, the stop never told
+  down = true
+  D.frame.scripts.OnDragStart(D.frame)
+  tick(0.06) ok(D.frame.moving, "dragged")
+  down = false
+  tick(0.06) ok(not D.frame.moving and not D.frame.isMoving, "let go and never told: it stays")
+  _G.IsMouseButtonDown = keepB
+  -- never over the screen, whatever the save says
+  UIParent.GetWidth = function() return 1720 end
+  UIParent.GetHeight = function() return 720 end
+  local keepW, keepH = D.W, D.H
+  D.Size(900, 5000) ok(D.H <= 720 / (D.frame.scale or 1) and D.H > D.W, "tall: never over the screen", D.W .. "x" .. D.H)
+  D.Flip() D.Size(9000, 386) ok(D.W <= 1720 / D.frame.scale and D.W > 1000, "wide: never over the screen", D.W)
+  D.Store().landscape.w = 2466 D.Place("landscape") ok(D.W <= 1720 / D.frame.scale, "a save that is: cut down", D.W)
+  corner.scripts.OnDoubleClick(corner) ok(D.W == 600 and D.H == 420, "a double-click: its normal size")
+  D.Flip() corner.scripts.OnDoubleClick(corner) ok(D.W == 260 and D.H == 462, "the same standing up")
+  UIParent.GetWidth, UIParent.GetHeight = nil, nil
+  D.Size(keepW, keepH)
+  -- it grows from its top left
+  D.frame.GetLeft, D.frame.GetTop = function() return 300 end, function() return 800 end
+  cx, cy = 100, 100
+  corner.scripts.OnMouseDown(corner, "LeftButton")
+  local p = D.frame.pts[1]
+  ok(#D.frame.pts == 1 and p[1] == "TOPLEFT" and p[4] == 300 and p[5] == 800, "held by its top left: the corner stays under the mouse")
+  corner.scripts.OnMouseUp(corner, "LeftButton")
+  D.frame.GetLeft, D.frame.GetTop = nil, nil
+  D.Place("portrait")
+end
 D.Size(260, 462)
 -- a fight
 click(find("back"))
@@ -192,7 +240,7 @@ GAME.fight = true
 ok(D.frame.alpha == D.FIGHT_ALPHA and D.frame.mouse == false, "a fight: barely there, the mouse goes through")
 local any = false
 for _, w in ipairs(D.frame.pieces) do if w.shown and w.mouse then any = true end end
-ok(not any, "no piece takes a click")
+ok(not any and not D.frame.corner.mouse and D.frame.strata == D.FIGHT_STRATA, "no piece takes a click, under the bars")
 D.Flip() D.Flip()
 ok(D.frame.shown, "it may even flip in a fight: nothing on it is secure")
 GAME.fight = false
@@ -383,7 +431,8 @@ do
   D.frame.scripts.OnDragStart(D.frame) D.frame.scripts.OnDragStop(D.frame)
   tick(2)
   ok(find("steptext").a.text:find("^Pull the corner"), "you dragged it: on by itself", find("steptext").a.text)
-  find("size").scripts.OnMouseDown(find("size")) cx, cy = 5040, -140 tick(0.1) find("size").scripts.OnMouseUp(find("size"))
+  local grip = D.frame.corner
+  grip.scripts.OnMouseDown(grip) cx, cy = 5040, -140 tick(0.1) grip.scripts.OnMouseUp(grip)
   tick(2)
   ok(find("steptext").a.text:find("^Tall or wide"), "you sized it: on", find("steptext").a.text)
   click(find("link", 2))
