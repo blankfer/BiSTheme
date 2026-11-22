@@ -39,7 +39,9 @@ local function node(kind, parent, template)
   function M:StartMoving() self.isMoving = true end
   function M:StopMovingOrSizing() self.isMoving = nil end
   function M:SetColorTexture(r) if type(r) ~= "number" then error("SetColorTexture wants numbers", 2) end self.r = r end
-  function M:SetText(t) if t ~= nil and type(t) ~= "string" then error("SetText wants words, got " .. type(t), 2) end calls = calls + 1 self.text = t end
+  function M:SetWordWrap(v) self.wrap = v end
+  function M:IsTruncated() return self.cut or false end
+  function M:SetText(t) self.laid = self.wrap if t ~= nil and type(t) ~= "string" then error("SetText wants words, got " .. type(t), 2) end calls = calls + 1 self.text = t end
   function M:GetText() return self.text end
   function M:SetFont(_, s) if type(s) ~= "number" then error("SetFont wants a size", 2) end self.size = s end
   function M:SetTextColor(r) if type(r) ~= "number" then error("SetTextColor wants numbers", 2) end self.col = r end
@@ -184,7 +186,12 @@ cx, cy = 100, -100
 tick(0.1)
 ok(D.H > 520 and count("row") > rowsNow, "the corner pulled down: taller, more rows", D.H)
 cx = 5000 tick(0.1)
-ok(T.DeckShape(D.W, D.H) == "portrait", "the corner never turns tall into wide", D.W .. "x" .. D.H)
+ok(T.DeckShape(D.W, D.H) == "landscape" and D.shape == "landscape" and D.Store().shape == "landscape", "pulled wider than tall: it IS the wide deck", D.W .. "x" .. D.H)
+ok(D.Store().portrait.w == 300 and D.Store().portrait.h == 520, "and the tall one keeps the size it had", D.Store().portrait.w)
+cx = 130 tick(0.1)
+ok(D.shape == "portrait" and D.W < D.H, "back again: tall", D.W .. "x" .. D.H)
+D.Size(400, 250) ok(D.shape == "portrait" and D.H >= D.W, "too small to be wide: it stays tall", D.W .. "x" .. D.H)
+cx = 100 tick(0.1)
 corner.scripts.OnMouseUp(corner, "LeftButton")
 ok(D.grip == nil and D.Store().portrait.h == D.H, "let go: kept")
 do  -- Arn's first look, 22 Nov: "when i drag to resize i cant let go"
@@ -215,11 +222,11 @@ do  -- Arn's first look, 22 Nov: "when i drag to resize i cant let go"
   UIParent.GetWidth = function() return 1720 end
   UIParent.GetHeight = function() return 720 end
   local keepW, keepH = D.W, D.H
-  D.Size(900, 5000) ok(D.H <= 720 / (D.frame.scale or 1) and D.H > D.W, "tall: never over the screen", D.W .. "x" .. D.H)
-  D.Flip() D.Size(9000, 386) ok(D.W <= 1720 / D.frame.scale and D.W > 1000, "wide: never over the screen", D.W)
+  D.Size(900, 5000) ok(D.H <= 720 / (D.frame.scale or 1) and D.H >= D.W, "tall: never over the screen", D.W .. "x" .. D.H)
+  D.Flip("landscape") D.Size(9000, 386) ok(D.W <= 1720 / D.frame.scale and D.W > 1000, "wide: never over the screen", D.W)
   D.Store().landscape.w = 2466 D.Place("landscape") ok(D.W <= 1720 / D.frame.scale, "a save that is: cut down", D.W)
   corner.scripts.OnDoubleClick(corner) ok(D.W == 600 and D.H == 420, "a double-click: its normal size")
-  D.Flip() corner.scripts.OnDoubleClick(corner) ok(D.W == 260 and D.H == 462, "the same standing up")
+  D.Flip("portrait") corner.scripts.OnDoubleClick(corner) ok(D.W == 260 and D.H == 462, "the same standing up")
   UIParent.GetWidth, UIParent.GetHeight = nil, nil
   D.Size(keepW, keepH)
   -- it grows from its top left
@@ -393,6 +400,42 @@ D.Paint()
 before = calls
 D.Paint()
 ok(calls - before <= 4, "painted again unchanged: no words written again", calls - before)
+-- words that wrap are laid out as wrapping words (22 Nov: "dont like how stuff is cutoff")
+do
+  D.Register{ owner = "BiSWords", key = "p", name = "Words", page = { title = function() return "Words" end, text = function() return ("invite them all, or disband, "):rep(4) end, rows = function() return { { text = "a row" } } end } }
+  D.W, D.H, D.shape = 260, 462, "portrait"
+  for i = 1, 3 do
+    D.page = "BiSWords:p" D.Paint()
+    local w = find("text")
+    ok(w and w.a.wrap == true and w.a.laid == true, "the words wrap, and are set while they do", i)
+    ok(w.h >= 3 * 18, "the box is as high as its words", w.h)
+    D.page = "home" D.Paint() D.page = "BiSTools:bosses" D.Paint()
+    for _, p in ipairs(D.frame.pieces) do if p.shown and p.kind == "row" then ok(not p.a.wrap and not p.a.laid, "a row never wraps") break end end
+  end
+  D.page = "BiSWords:p" D.Paint()
+  local w, said = find("row"), nil
+  w.a.cut = true
+  local keepT = _G.GameTooltip
+  _G.GameTooltip = { SetOwner = function() end, SetText = function(_, t2) said = t2 end, Show = function() end, Hide = function() end }
+  w.scripts.OnEnter(w)
+  ok(said == "a row", "cut off: in full under the mouse", said)
+  w.a.cut = nil said = nil w.scripts.OnEnter(w) ok(said == nil, "not cut off: no tip")
+  w.scripts.OnLeave(w)
+  _G.GameTooltip = keepT
+  D.page = "home"
+  -- an icon is a picture when there is one
+  D.ART = D.ART or {}
+  local first = D.Icons()[1][1]
+  local keepA = D.ART[first.id]
+  D.ART[first.id] = "Interface\\Icons\\INV_Misc_Map_01"
+  D.Paint()
+  local tile
+  for _, p in ipairs(D.frame.pieces) do if p.shown and p.kind == "app" then tile = p break end end
+  ok(tile and tile.pic and tile.pic.shown and tile.pic.tex == D.ART[first.id] and tile.a.text == "", "an icon is the game's picture")
+  D.ART[first.id] = keepA
+  D.Paint()
+  ok(keepA or not tile.pic.shown, "none: its letters")
+end
 -- every size, every page: it paints
 for _, page in ipairs({ "home", "switches", "BiSTools:bosses", "BiSTools:run", "BiSBroken:bad", "Nobody:here" }) do
   D.page = page

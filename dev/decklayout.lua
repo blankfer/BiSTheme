@@ -71,7 +71,7 @@ for name, v in pairs(VIEWS) do
         -- EASY TO HIT (Arn, 22 Nov): 22 high and 24 wide at least, before the deck's own 1.25
         if CLICKS[b.kind] then ok(b.w >= 20 and b.h >= 22, "easy to hit: " .. b.kind, where .. " " .. b.w .. "x" .. b.h) end
         if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and b.h == L.ROW, "a row can be read", where .. " " .. b.w) end
-        if b.kind == "app" or b.kind == "railapp" then ok(b.w >= 46 and b.h >= 46, "an app can be clicked", where .. " " .. b.w) end
+        if b.kind == "app" or b.kind == "railapp" then ok(b.w >= 46 and b.h >= (b.wide and 32 or 46), "an app can be clicked", where .. " " .. b.w) end
         if b.kind == "key" or b.kind == "tab" then ok(b.w >= 40, "a key can be clicked: " .. b.kind, where .. " " .. b.w) end
         if b.kind == "box" then ok(b.w >= 40, "a number box can be read", where .. " " .. b.w) end
       end
@@ -137,6 +137,18 @@ ok(count(VIEWS.home, 324, 800, "card") >= count(VIEWS.home, 324, 480, "card"), "
 ok(count(VIEWS.homeMany, 900, 630, "card") >= count(VIEWS.homeMany, 324, 576, "card") , "landscape: no fewer cards", count(VIEWS.homeMany, 900, 630, "card") .. " " .. count(VIEWS.homeMany, 324, 576, "card"))
 ok(count(VIEWS.bosses, 858, 600, "row") > 0 and count(VIEWS.bosses, 858, 600, "hero") == 1, "landscape: the list and the big picture, side by side")
 ok(count(VIEWS.bosses, 324, 576, "hero") == 1 and count(VIEWS.bosses, 300, 330, "hero") == 0, "portrait: the picture goes first when there is no room")
+-- IT REFRAMES (Arn, 22 Nov, his 637 x 636: one card, eight letters down the side, the rest empty)
+do
+  local v = { kind = "home", cards = { { p = 4, lines = 0, btn = true } }, apps = 24, dock = 0 }
+  local function kinds(w, h) local c, far, boxes = {}, 0, T.DeckLayout(v, w, h) for _, b in ipairs(boxes) do c[b.kind] = (c[b.kind] or 0) + 1 if b.kind == "app" or b.kind == "railapp" then far = math.max(far, b.y + b.h) c.k, c.hh = b.k, b.h end if b.kind == "card" then c.cardH = b.h end end return c, far end
+  local c, far = kinds(637, 636)
+  ok(c.app == 24 and not c.railapp and not c.moreapps, "637 x 636: every icon with its name, no rail", tostring(c.app))
+  ok(c.k and c.k > 1 and far > 636 * 0.6, "and they fill it: bigger icons", tostring(c.k) .. " to " .. far)
+  ok(c.cardH <= 84, "a card with nothing more to say does not grow", c.cardH)
+  c = kinds(600, 420) ok(c.railapp and not c.app, "600 x 420: the rail")
+  local c2 = kinds(900, 430) ok(c2.railapp and c2.railapp > c.railapp, "wider: the rail says the names, more of them", c2.railapp)
+  ok((kinds(260, 462)).app >= 6, "tall: the icons")
+end
 -- NOTHING IS OUT OF REACH (22 Nov: the accessibility switches did not fit, and nothing led to them): every row, step and
 -- switch comes up at some scroll, at the smallest size and the everyday one
 for _, size in ipairs({ { L.MIN_W, L.MIN_H }, { 300, 533 }, { L.MIN_LW, L.MIN_LH }, { 600, 420 }, { 560, 900 } }) do

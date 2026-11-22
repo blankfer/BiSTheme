@@ -38,6 +38,9 @@ local L = {
   BIG = 36, KEY = 24, LINK = 24,
   LINE = 18, NOTE = 15, PROG = 5,
   FOOT = 24, RAIL = 60,
+  RAIL_WIDE = 132, RAIL_WIDE_H = 34, RAIL_NAMES = 760,     -- a wide deck's rail says the names; from this width on
+  GRID_H = 460,                                  -- a wide home at least this tall is a home screen (icons with names), not a rail
+  APP_K = { 1.7, 1.4, 1.2 },                     -- the icons grow to the largest of these with which all of them still fit
   HERO_MIN = 70, HERO_SHARE = 0.28,
   MAX_CARDS = 6,
   HIT = 24,                                      -- nothing to click is smaller than this (Arn, 22 Nov: "easy for people with accessibility")
@@ -131,16 +134,21 @@ local function pageOf(n, room, skip)
 end
 local function appGrid(out, n, x, y, w, h, skip)
   if n <= 0 or h < L.APP_H then return 0 end
-  local per = fit(99, w, L.APP_W)
-  local rows = max(1, floor((h + L.GAP) / (L.APP_H + L.GAP)))
+  local k, per, rows = 1, fit(99, w, L.APP_W), max(1, floor((h + L.GAP) / (L.APP_H + L.GAP)))
+  -- (bigger icons when every one of them still fits: a bigger deck is a bigger home screen - Arn, 22 Nov: "did not reframe")
+  for _, kk in ipairs(L.APP_K) do
+    local pp, rr = fit(99, w, L.APP_W * kk), floor((h + L.GAP) / (floor(L.APP_H * kk) + L.GAP))
+    if rr >= 1 and pp * rr >= n then k, per, rows = kk, pp, rr break end
+  end
+  local ah = floor(L.APP_H * k)
   local room = per * rows
   local at, show, more = pageOf(n, room, skip)
   local each = (w - (per - 1) * L.GAP) / per
   for i = 1, show + (more and 1 or 0) do
     local cx, cy = (i - 1) % per, floor((i - 1) / per)
-    out[#out + 1] = { kind = i > show and "moreapps" or "app", i = i > show and show or at + i, x = x + cx * (each + L.GAP), y = y + cy * (L.APP_H + L.GAP), w = each, h = L.APP_H }
+    out[#out + 1] = { kind = i > show and "moreapps" or "app", i = i > show and show or at + i, x = x + cx * (each + L.GAP), y = y + cy * (ah + L.GAP), w = each, h = ah, k = k }
   end
-  return ceil((show + (more and 1 or 0)) / per) * (L.APP_H + L.GAP)
+  return ceil((show + (more and 1 or 0)) / per) * (ah + L.GAP)
 end
 
 --- The dock, centred.
@@ -153,13 +161,15 @@ local function dock(out, n, x, y, w)
 end
 
 --- The rail of apps down the left side (landscape). Answers the x after it.
-local function rail(out, n, x, y, h, skip)
-  local room = max(1, floor((h + L.GAP) / (L.RAIL - 8 + L.GAP)))
+local function rail(out, n, x, y, h, skip, w)
+  local wide = (w or 0) >= L.RAIL_NAMES
+  local rw, rh = wide and L.RAIL_WIDE or L.RAIL - 8, wide and L.RAIL_WIDE_H or L.RAIL - 8
+  local room = max(1, floor((h + L.GAP) / (rh + L.GAP)))
   local at, show, more = pageOf(n, room, skip)
   for i = 1, show + (more and 1 or 0) do
-    out[#out + 1] = { kind = i > show and "moreapps" or "railapp", i = i > show and show or at + i, x = x, y = y + (i - 1) * (L.RAIL - 8 + L.GAP), w = L.RAIL - 8, h = L.RAIL - 8 }
+    out[#out + 1] = { kind = i > show and "moreapps" or "railapp", i = i > show and show or at + i, x = x, y = y + (i - 1) * (rh + L.GAP), w = rw, h = rh, wide = wide or nil }
   end
-  return x + L.RAIL
+  return x + rw + 8
 end
 
 --- Rows filling a band from the `skip`th on (the wheel, the pad's triggers): never past the end, so the last row is always
@@ -235,26 +245,38 @@ local function home(out, v, w, h, sw)
     bottom = bottom - L.DOCK_H - L.GAP
   end
   if T.DeckShape(w, h) == "landscape" then
-    if nApps > 0 and W >= 360 then
-      local nx = rail(out, nApps, x, y, bottom - y, v.appSkip)
+    -- A HOME SCREEN when it is tall enough (cards on top, the icons with their names under them), else cards beside a rail
+    local grid = nApps > 0 and h >= L.GRID_H
+    if nApps > 0 and W >= 360 and not grid then
+      local nx = rail(out, nApps, x, y, bottom - y, v.appSkip, W)
       W, x = W - (nx - x), nx
+    end
+    local floorY = bottom
+    if grid then
+      -- (what the icons need, at least two rows of them, never more than two thirds)
+      local need = ceil(nApps / fit(99, W, L.APP_W)) * (L.APP_H + L.GAP)
+      floorY = bottom - min(max(need, 2 * (L.APP_H + L.GAP)), floor((bottom - y) * 0.6))
     end
     if nCards > 0 then
       local per = fit(nCards, W, L.CARD_MIN_W)
       local ch = L.CARD + L.CARD_BTN + L.GAP
-      local rows = max(1, floor((bottom - y + L.GAP) / (ch + L.GAP)))
+      local rows = max(1, floor((floorY - y + L.GAP) / (ch + L.GAP)))
       local show = min(nCards, per * rows)
       local each = (W - (per - 1) * L.GAP) / per
-      -- room to spare: the cards grow taller, evenly
+      -- room to spare: the cards grow taller, evenly - as far as one of them has lines to show
       local used = ceil(show / per)
-      local tall = min(ch * 1.8, (bottom - y - (used - 1) * L.GAP) / used)
-      ch = max(ch, floor(tall))
+      local lines = 0
+      for i = 1, show do lines = max(lines, cards[i].size == "M" and 0 or min(cards[i].lines or 0, L.CARD_LINES)) end
+      local tall = min(L.CARD_L + L.CARD_LINE * lines, (floorY - y - (used - 1) * L.GAP) / used)
+      if lines > 0 then ch = max(ch, floor(tall)) end
       for i = 1, show do
         local c = cards[i]
         local lines = c.size == "M" and 0 or min(c.lines or 0, L.CARD_LINES, max(0, floor((ch - L.CARD_L + 4) / L.CARD_LINE)))
         out[#out + 1] = { kind = "card", i = i, x = x + ((i - 1) % per) * (each + L.GAP), y = y + floor((i - 1) / per) * (ch + L.GAP), w = each, h = ch, btn = c.btn ~= false, size = lines > 0 and "L" or "M", lines = lines }
       end
+      y = y + used * (ch + L.GAP)
     end
+    if grid then appGrid(out, nApps, x, y + L.GAP, W, bottom - y - L.GAP, v.appSkip) end
     return
   end
   -- portrait: cards on top, then the icons: they get up to three rows, never less than one
@@ -312,7 +334,7 @@ local function page(out, v, w, h, sw)
   local hero = v.hero and on(sw, "hero")
   if T.DeckShape(w, h) == "landscape" then
     if (v.apps or 0) > 0 and W >= 560 then
-      local nx = rail(out, v.apps, x, y, bottom - y, v.appSkip)
+      local nx = rail(out, v.apps, x, y, bottom - y, v.appSkip, W)
       W, x = W - (nx - x), nx
     end
     -- the list left, the detail right

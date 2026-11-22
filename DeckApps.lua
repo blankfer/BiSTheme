@@ -48,6 +48,23 @@ D.CATALOG = {
   { "BiSShell", "Shell", "Sh", "A computer inside the game: what your addons cost, and the games hidden on floppy disks.", api = "BiSShellAPI", slash = "BISSHELL", find = "BiS Shell" },
 }
 
+-- THE ICONS: the game's own pictures, by the app's id (an app's own `art` wins; none = its letters). All of them are icons the
+-- first game had, so every client has them.
+local function I(name) return "Interface\\Icons\\" .. name end
+D.ART = D.ART or {}
+for id, name in pairs({
+  ["BiSTools:bosses"] = "INV_Misc_Bone_HumanSkull_01", ["BiSTools:run"] = "INV_Misc_Note_01", ["BiSTools:farm"] = "Ability_Hunter_SniperShot",
+  ["BiSTools:rides"] = "Ability_Mount_Raptor", ["BiSTools:tool-recap"] = "Ability_Creature_Cursed_02", ["BiSTools:tool-rivals"] = "Ability_DualWield",
+  ["BiSTools:tool-social"] = "INV_Letter_15", ["BiSTools:tool-bg"] = "INV_BannerPVP_01", ["BiSTools:tool-map"] = "INV_Misc_Map_01",
+  ["BiSTools:tool-party"] = "Spell_Holy_PrayerOfHealing", ["BiSTools:tool-summon"] = "Spell_Holy_PrayerOfHealing", ["BiSTools:tool-sounds"] = "INV_Misc_Bell_01", ["BiSTools:tool-xp"] = "INV_Misc_Rune_01",
+  ["BiSTools:tool-disenchant"] = "INV_Enchant_Disenchant", ["BiSTools:tool-processing"] = "INV_Misc_Gear_01", ["BiSTools:tool-codex"] = "INV_Misc_Book_11",
+  ["BiSTools:tool-alts"] = "INV_Misc_GroupLooking", ["BiSTools:tool-combo"] = "Spell_Nature_Lightning", ["BiSTools:tool-windfury"] = "Spell_Nature_Cyclone",
+  ["BiSShell:fm"] = "INV_Misc_Drum_01", ["BiSShell:play"] = "Ability_Warrior_Challange", ["BiSShell:games"] = "INV_Misc_Dice_01",
+  ["BiSTools:app"] = "INV_Misc_Wrench_01", ["BiSHealing:app"] = "Spell_Nature_HealingWaveGreater", ["BiSMemories:app"] = "INV_Misc_Spyglass_03",
+  ["BiSGuild:app"] = "INV_Shirt_GuildTabard_01", ["BiSGamba:app"] = "INV_Misc_Coin_02", ["Nebbinator:app"] = "INV_Misc_GroupNeedMore", ["BiSShell:app"] = "Spell_Holy_PowerWordShield",
+  ["BiSProbe:deck"] = "INV_Misc_EngGizmos_27", ["BiSProbe:reload"] = "Spell_Nature_TimeStop", ["BiSProbe:errors"] = "Ability_Spy",
+}) do D.ART[id] = I(name) end
+
 --- Is this addon loaded, there but off, or not there? Asked once: it cannot change before a reload.
 D.states = D.states or {}
 function D.AddonState(name)

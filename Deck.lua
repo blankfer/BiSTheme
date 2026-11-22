@@ -421,7 +421,7 @@ function D.Model()
       m.big = state == "off" and d.turnOn or nil
       if state == "missing" then m.text = m.text .. " Get it: in the CurseForge app, search for " .. (d.find or d.owner) .. "." end
       m.boxes, m.tabs, m.rows, m.keys, m.tab = {}, {}, {}, {}, 1
-      m.view = { kind = "page", boxes = 0, tabs = 0, rows = 0, keys = 0, big = m.big and true or nil, textLines = math.ceil(#m.text / 34) + 1, apps = #m.apps, appSkip = D.appSkip }
+      m.view = { kind = "page", boxes = 0, tabs = 0, rows = 0, keys = 0, big = m.big and true or nil, textLines = math.ceil(#m.text / D.Letters()), apps = #m.apps, appSkip = D.appSkip }
       return m
     end
     if not p or d.parked then D.page = "home" if d and d.parked then d.parkedSaid = true end return D.Model() end
@@ -449,7 +449,7 @@ function D.Model()
       if p.tick then D.ticking = true end
       m.say = p.say and D.Call(d, "say", p.say) or nil
       m.view = { kind = "page", boxes = #m.boxes, tabs = #m.tabs, rows = #m.rows, keys = #m.keys, big = m.big and true or nil,
-        say = m.say and true or nil, hero = m.hero and true or nil, textLines = m.text and math.max(1, math.ceil(#m.text / 46)) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
+        say = m.say and true or nil, hero = m.hero and true or nil, textLines = m.text and math.max(1, math.ceil(#m.text / D.Letters())) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
     end
   end
   return m
@@ -506,7 +506,7 @@ local LOOK = {                                            -- kind -> ground colo
   card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 },
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
-  cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "line", 0 }, railapp = { "line", 0 },
+  cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "card", 1 }, railapp = { "card", 1 },
 }
 
 local function text(parent, size, colour)
@@ -537,9 +537,13 @@ local function piece(parent)
   w:SetScript("OnEnter", function(self)
     if self.act then self.wash:Show() end
     D.Speak(self)
-    if self.tip and GameTooltip then
+    local tip = self.tip
+    for _, fs in ipairs({ self.a, self.c, self.b }) do             -- (cut off: said in full under the mouse)
+      if fs.IsTruncated and ask(fs.IsTruncated, fs) == true and type(fs.said) == "string" and fs.said ~= tip then tip = fs.said .. (tip and "\n" .. tip or "") end
+    end
+    if tip and GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-      GameTooltip:SetText(self.tip)
+      GameTooltip:SetText(tip, 1, 1, 1, 1, true)
       GameTooltip:Show()
     end
   end)
@@ -564,6 +568,17 @@ local function say(fs, words, size, colour, justify)
   if fs.just ~= justify then fs.just = justify fs:SetJustifyH(justify) end
   words = plain(words) ~= nil and tostring(words) or ""
   if fs.said ~= words then fs.said = words fs:SetText(words) end
+end
+
+-- Words that wrap (Arn, 22 Nov: "dont like how stuff is cutoff" - "Your usual group: invite them all, or disband, i..." on one line
+-- of a box two lines high): the wrap used to go off and on at every paint with the words never set again after it, and the client
+-- lays words out when they are SET. So: touched only when it changes, and the words are set again.
+local WRAPS = { text = 1, steptext = 1 }
+local function wrap(fs, on)
+  if fs.wraps == on then return end
+  fs.wraps = on
+  fs.said = nil
+  fs:SetWordWrap(on)
 end
 
 --- Read aloud what the mouse or the pad is on (the PC's own voice; a switch, off until asked for; never in a fight).
@@ -654,8 +669,25 @@ function PAINT.app(w, o, m)
   if not d then return end
   local state = d.dev and "dev" or D.State(d)
   local gray = state ~= "on"
-  say(w.a, d.icon or (d.name or "?"):sub(1, 2), 15, gray and "dim" or "ink", "CENTER")
-  say(w.c, o.kind == "app" and (d.name or "") or "", 11, gray and "dim" or "ink2", "CENTER")
+  local art = d.art or (D.ART and D.ART[d.id])
+  if art then
+    if not w.pic then
+      w.pic = w:CreateTexture(nil, "ARTWORK")
+      w.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    end
+    if w.pic.art ~= art then w.pic.art = art w.pic:SetTexture(art) end
+    local s = o.wide and 26 or o.kind == "app" and math.floor(math.min(34 * (o.k or 1), o.h - 24)) or 34
+    w.pic:ClearAllPoints()
+    if o.wide then w.pic:SetPoint("LEFT", w, "LEFT", 5, 0)
+    elseif o.kind == "app" then w.pic:SetPoint("TOP", w, "TOP", 0, -5)
+    else w.pic:SetPoint("CENTER", w, "CENTER", 0, 0) end
+    w.pic:SetSize(s, s)
+    if w.pic.SetDesaturated then w.pic:SetDesaturated(gray) end
+    w.pic:SetAlpha(gray and 0.55 or 1)
+    w.pic:Show()
+  end
+  say(w.a, art and "" or d.icon or (d.name or "?"):sub(1, 2), math.floor(15 * (o.k or 1)), gray and "dim" or "ink", "CENTER")
+  say(w.c, (o.kind == "app" or o.wide) and (d.name or "") or "", o.k and o.k > 1.3 and 13 or 11, gray and "dim" or "ink2", o.wide and "LEFT" or "CENTER")
   local n = (state == "on" or state == "dev") and d.badge and D.Call(d, "badge", d.badge)
   if type(n) == "number" and n > 0 then say(w.b, tostring(n), 11, gray and "dim" or "gold", "RIGHT")
   else say(w.b, o.kind == "app" and ({ off = "OFF", missing = "GET", dev = "DEV" })[state] or "", 10, "dim", "RIGHT") end   -- (a word, never the gray alone)
@@ -756,9 +788,9 @@ function PAINT.hero(w, o, m)
   w.tip = h.tip
 end
 function PAINT.say(w, o, m) say(w.a, m.say or "", 11, "ink2") end
-function PAINT.text(w, o, m) w.a:SetWordWrap(true) say(w.a, m.text or "", 12, "ink2") end
+function PAINT.text(w, o, m) say(w.a, m.text or "", 12, "ink2") end
 function PAINT.stephead(w, o, m) local s = m.steps[m.cur] say(w.a, "STEP " .. m.cur .. " - " .. tostring(s.phase or ""), 11, "accent") say(w.b, s.isDone and "done" or "watching", 11, "dim", "RIGHT") end
-function PAINT.steptext(w, o, m) w.a:SetWordWrap(true) say(w.a, tostring(m.steps[m.cur].text or ""), 15, "ink") end
+function PAINT.steptext(w, o, m) say(w.a, tostring(m.steps[m.cur].text or ""), 15, "ink") end
 function PAINT.stepnote(w, o, m) say(w.a, tostring(m.steps[m.cur].note or ""), 11, "ink2") end
 function PAINT.link(w, o, m)
   say(w.a, ({ "< back", "skip", "next >" })[o.i], 12, "accent", "CENTER")
@@ -836,7 +868,10 @@ local function words(w, o)
   elseif o.kind == "box" then
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 6, -3) w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 6, 2)
   elseif o.kind == "app" then
-    w.a:SetPoint("TOP", w, "TOP", 0, -12) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 3) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -6, -3)
+    w.a:SetPoint("TOP", w, "TOP", 0, -math.floor(o.h * 0.2)) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 3) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -6, -3)
+  elseif o.kind == "railapp" and o.wide then
+    w.a:SetPoint("LEFT", w, "LEFT", 4, 0) w.a:SetPoint("RIGHT", w, "LEFT", 34, 0) w.b:SetPoint("RIGHT", w, "RIGHT", -6, 0)
+    w.c:SetPoint("LEFT", w, "LEFT", 40, 0) w.c:SetPoint("RIGHT", w, "RIGHT", -26, 0)
   elseif o.kind == "railapp" then
     w.a:SetPoint("CENTER", w, "CENTER", 0, 0) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -4, -3) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 0)
   elseif o.kind == "row" or o.kind == "step" then
@@ -935,9 +970,9 @@ end
 function D.Fit(w, h)
   local rw, rh = D.Room()
   if rw then
-    local tall = h > w
+    local tall = h >= w
     w, h = math.min(w, rw), math.min(h, rh)
-    if tall then w = math.min(w, h - 1) elseif w <= h then h = w - 1 end
+    if tall then w = math.min(w, h) elseif w <= h then h = w - 1 end
   end
   return T.DeckClamp(w, h)
 end
@@ -962,11 +997,28 @@ function D.Flip(shape)
   D.Save()
   D.Dirty(true)
 end
---- A new size (the corner, the sliders): kept for this shape; the corner never turns one shape into the other.
+--- How many letters of a 12 px line fit the words' box (a wide deck has them beside its list).
+function D.Letters()
+  local W = (D.W or 260) - 20
+  if D.shape == "landscape" then W = (W - (W >= 560 and (W >= T.DECK_L.RAIL_NAMES and 140 or 60) or 0)) * 0.55 end
+  return math.max(24, math.floor((W - 16) / 5.6))
+end
+--- A new size (the corner, the sliders): kept for the shape it has. Pulled wider than tall it IS the wide deck, and back (Arn,
+--- 22 Nov: "left bar stayed to same did not reframe" - it used to stop at a square). Too small to be wide: it stays tall.
 function D.Size(w, h)
-  if D.shape == "portrait" then w = math.min(w, h - 1) else w = math.max(w, h + 1) end
+  local L = T.DECK_L
+  if w > h and (w < L.MIN_LW or h < L.MIN_LH) then h = w end
   w, h = D.Fit(w, h)
-  local s = D.Store()[D.shape]
+  local shape = T.DeckShape(w, h)
+  local st = D.Store()
+  if shape ~= D.shape then
+    local g, was = D.grip, st[D.shape]
+    if g and g.shape == D.shape and was then was.w, was.h = g.w, g.h end           -- (the shape it left keeps the size it had)
+    D.shape, st.shape = shape, shape
+    if not g then D.KeepPlace() end
+  end
+  st[shape] = type(st[shape]) == "table" and st[shape] or {}
+  local s = st[shape]
   s.w, s.h, D.W, D.H = w, h, w, h
   D.frame:SetSize(w, h)
   D.Dirty(true)
@@ -1101,7 +1153,8 @@ function D.Paint()
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
-    w.a:SetWordWrap(false)
+    wrap(w.a, WRAPS[o.kind] and true or false)
+    if w.pic then w.pic:Hide() end
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)
     w:SetSize(o.w, o.h)
@@ -1176,7 +1229,7 @@ function D.GripStart()
   end
   local s = f:GetEffectiveScale()
   local x, y = GetCursorPosition()
-  D.grip = { x = x / s, y = y / s, w = D.W, h = D.H, s = s, at = 0, pinned = l and t and true }
+  D.grip = { x = x / s, y = y / s, w = D.W, h = D.H, shape = D.shape, s = s, at = 0, pinned = l and t and true }
 end
 --- Is the button still down? (false = let go; nil = the client does not say)
 function D.Held() return ask(IsMouseButtonDown, "LeftButton") end
@@ -1190,7 +1243,7 @@ function D.GripEnd()
   local g = D.grip
   if not g then return end
   D.grip = nil
-  if g.pinned then D.KeepPlace() end
+  if g.pinned or g.shape ~= D.shape then D.KeepPlace() end
   D.Save()
   D.Dirty()
 end
