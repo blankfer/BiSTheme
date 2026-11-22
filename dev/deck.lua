@@ -480,6 +480,11 @@ do
     rows = function() return { { text = ("word "):rep(12) }, { text = "short" } } end } }
   D.W, D.H, D.shape, D.page = 260, 462, "portrait", "BiSLong:p"
   D.Paint()
+  D.defs["BiSLong:p"].page.say = function() return ("gold, you are told "):rep(4) end
+  D.defs["BiSLong:p"].page.boxes = function() return { { "KILLED YOU", -0 } } end
+  D.Paint()
+  ok(find("say").a.wrap and find("say").h == 2 * T.DECK_L.SAY, "the line under a list: as many lines as it says", find("say").h)
+  ok(find("box").a.text == "0", "nothing is 0, not -0", find("box").a.text)
   ok(find("row").a.wrap and find("row").h == T.DECK_L.ROW2 and find("row", 2).h == T.DECK_L.ROW and not find("row", 2).a.wrap, "a long row: two lines")
   local ti = find("title")
   ti.a.GetUnboundedStringWidth = function(self) return #self.text * self.size * 0.5 end

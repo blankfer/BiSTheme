@@ -19,7 +19,7 @@ local VIEWS = {
   homeMany = { kind = "home", cards = 12, apps = 40, dock = 9 },
   bosses = { kind = "page", boxes = 3, tabs = 2, rows = 21, keys = 2, big = true, hero = true, say = true, strip = true, apps = 12 },
   sounds = { kind = "page", find = true, boxes = 2, tabs = 3, rows = 60, keys = 2, big = true, apps = 12 },
-  long = { kind = "page", rows = 30, keys = 2, big = true, apps = 12, titleN = 14, kickN = 18, lens = function(i) return i % 3 == 0 and 60 or 8, 40 end },
+  long = { kind = "page", say = true, sayN = 130, rows = 30, keys = 2, big = true, apps = 12, titleN = 14, kickN = 18, lens = function(i) return i % 3 == 0 and 60 or 8, 40 end },
   longSteps = { kind = "steps", steps = 9, textLines = 2, titleN = 30, kickN = 18, lens = function(i) return i % 2 == 0 and 70 or 8, 40 end },
   outLong = { kind = "page", win = true, rows = 12, titleN = 14, kickN = 18, lens = function() return 70, 0 end },
   alone = { kind = "page", find = true, boxes = 0, tabs = 2, rows = 0, keys = 0, textLines = 2, apps = 12 },

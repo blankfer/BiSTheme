@@ -607,7 +607,7 @@ end
 -- Words that wrap (Arn, 22 Nov: "dont like how stuff is cutoff" - "Your usual group: invite them all, or disband, i..." on one line
 -- of a box two lines high): the wrap used to go off and on at every paint with the words never set again after it, and the client
 -- lays words out when they are SET. So: touched only when it changes, and the words are set again.
-local WRAPS = { text = 1, steptext = 1 }
+local WRAPS = { text = 1, steptext = 1, say = 1 }
 local function wrap(fs, on)
   if fs.wraps == on then return end
   fs.wraps = on
@@ -798,7 +798,7 @@ end
 function PAINT.box(w, o, m)
   local b = m.boxes[o.i] or {}
   fit(w.c, b[1] or "", { 11, 10, 9 }, "dim", nil, o.w - 10)
-  fit(w.a, tostring(b[2] or ""), { 17, 14, 12, 10 }, b[3] or "ink", nil, o.w - 10)
+  fit(w.a, b[2] == 0 and "0" or tostring(b[2] or ""), { 17, 14, 12, 10 }, b[3] or "ink", nil, o.w - 10)
 end
 function PAINT.tab(w, o, m)
   local onTab = m.tab == o.i
@@ -965,7 +965,7 @@ function PAINT.say(w, o, m) say(w.a, m.say or "", 11, "ink2") end
 function PAINT.text(w, o, m) say(w.a, m.text or "", 12, "ink2") end
 function PAINT.stephead(w, o, m) local s = m.steps[m.cur] say(w.a, "STEP " .. m.cur .. " - " .. tostring(s.phase or ""), 11, "accent") say(w.b, s.isDone and "done" or "watching", 11, "dim", "RIGHT") end
 function PAINT.steptext(w, o, m) say(w.a, tostring(m.steps[m.cur].text or ""), 15, "ink") end
-function PAINT.stepnote(w, o, m) say(w.a, tostring(m.steps[m.cur].note or ""), 11, "ink2") end
+function PAINT.stepnote(w, o, m) fit(w.a, tostring(m.steps[m.cur].note or ""), { 11, 10, 9 }, "ink2", nil, o.w - 4) end
 function PAINT.link(w, o, m)
   say(w.a, ({ "< back", "skip", "next >" })[o.i], 12, "accent", "CENTER")
   local how = ({ "back", "skip", "next" })[o.i]
@@ -1051,7 +1051,7 @@ local function words(w, o)
   elseif o.kind == "row" or o.kind == "step" then
     w.c:SetPoint("LEFT", w, "LEFT", 7, 0) w.b:SetPoint("RIGHT", w, "RIGHT", w.keys and -58 or -6, 0)
     w.a:SetPoint("LEFT", w, "LEFT", 24, 0) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
-  elseif o.kind == "text" or o.kind == "steptext" then
+  elseif o.kind == "text" or o.kind == "steptext" or o.kind == "say" then
     w.a:SetJustifyV("TOP")
     w.a:SetPoint("TOPLEFT", w, "TOPLEFT", o.kind == "text" and 8 or 0, o.kind == "text" and -5 or 0) w.a:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", o.kind == "text" and -8 or 0, 0)
   elseif o.kind == "switch" or o.kind == "slider" or o.kind == "stephead" then
@@ -1333,6 +1333,7 @@ function D.Paint()
   if D.surf.id then m.view.win, m.view.apps = true, 0
   elseif m.def and D.WinCan and D.WinCan(m.def.id) and not m.about then m.view.out = true end
   local v = m.view
+  v.sayN = #tostring(m.say or "")
   v.titleN, v.kickN = #tostring(m.title or ""), #tostring(m.kicker or "")
   if m.steps and v.kind == "steps" then
     v.lens = function(i) local s = m.steps[i] return #tostring(s and s.text or ""), #tostring(s and s.phase or "") * 5.6 + 8 end

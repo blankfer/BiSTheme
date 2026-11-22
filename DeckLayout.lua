@@ -376,6 +376,8 @@ local function actions(c, v, sw)
   if v.big then c:bottom("big", L.BIG) end
 end
 
+-- the line under a list: as many lines as it says (three at most)
+local function sayHigh(v, w) return L.SAY * max(1, min(3, ceil((v.sayN or 0) * 5.4 / max(1, w - 4)))) end
 local function page(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
   local y = head(out, x, 6, W, true, sw, v)
@@ -395,7 +397,7 @@ local function page(out, v, w, h, sw)
       if nt > 0 then local ty = c.y0 c.y0 = ty + L.TAB_H + L.GAP spread(out, "tab", nt, x, ty, lw, L.TAB_H) end
       if v.find then c:top("find", L.TAB_H) end
       if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
-      if v.say and on(sw, "say") then c:bottom("say", L.SAY) end
+      if v.say and on(sw, "say") then c:bottom("say", sayHigh(v, lw)) end
       rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip, v.lens)
       x, W = x + lw + L.GAP * 2, W - lw - L.GAP * 2
     end
@@ -417,7 +419,8 @@ local function page(out, v, w, h, sw)
   end
   local c = column(out, x, y, W, bottom - y)
   actions(c, v, sw)
-  if v.say and on(sw, "say") and c:left() >= L.SAY + 4 * (L.ROW + 2) then c:bottom("say", L.SAY) end
+  local sh = sayHigh(v, W)
+  if v.say and on(sw, "say") and c:left() >= sh + 4 * (L.ROW + 2) then c:bottom("say", sh) end
   -- what the list needs to be worth having; the picture takes what is over
   local need = (v.rows or 0) > 0 and 4 * (L.ROW + 2) or 0
   local mids = (nb > 0 and L.BOX_H + L.GAP or 0) + (nt > 0 and L.TAB_H + L.GAP or 0) + (v.find and L.TAB_H + L.GAP or 0) + ((v.strip and on(sw, "strip")) and L.STRIP + L.GAP or 0)
