@@ -56,9 +56,42 @@ for k, v in pairs({ ground = "08060d", card = "151020", sunken = "221d3c", line 
   dim = "8e86a6", accent = "b980ff", accentSoft = "2c2148", good = "4fd0cf", gold = "e5c04a", warn = "f08cb0" }) do
   if not T.hex[k] then T.hex[k] = v end
 end
+-- THE THEMES (Arn, 22 Nov: "Let's make Ryan gosling mode a mode you have to turn on theme , I like the clean style that you did
+-- first , we like dark mode other people can change the theme"). Dark = the family's own colours, the default. Every theme is the
+-- same names in other colours, so nothing on the deck knows which is on; dev/deck.lua measures each one's contrast.
+-- A theme may have a `sky`: bands behind the head of the home screen, top to bottom (never behind a list).
+D.THEMES = {
+  { key = "dark", name = "Dark", hex = {} },
+  { key = "drive", name = "Night drive", hex = { ground = "0b0814", card = "140e22", sunken = "211836", line = "33224f", line2 = "4a2f6b", ink = "f4ecfa", ink2 = "d6c8e6", dim = "a294b8",
+      accent = "ff85c0", accentSoft = "3d1a44", warn = "ff9d7d" },
+    sky = { "0b0814", "120b20", "1a1033", "241238", "2e1445", "3a1553", "6a2060", "a8446a" } },
+  { key = "light", name = "Light", hex = { ground = "f6f4fa", card = "ffffff", sunken = "ebe7f3", line = "d8d0e8", line2 = "bdb1d6", ink = "191527", ink2 = "453d5e", dim = "5f5775",
+      accent = "7a2fc4", accentSoft = "e6d6f8", good = "0b6b6d", gold = "765800", warn = "96305c" } },
+  { key = "contrast", name = "High contrast", hex = { ground = "000000", card = "0d0d0d", sunken = "1c1c1c", line = "8a8a8a", line2 = "b4b4b4", ink = "ffffff", ink2 = "ffffff", dim = "e2e2e2",
+      accent = "d3b0ff", accentSoft = "3a2a55", good = "5ff0e8", gold = "ffe14d", warn = "ffa6c6" } },
+}
+function D.Theme()
+  local key = D.Store().theme
+  for _, t in ipairs(D.THEMES) do if t.key == key then return t end end
+  return D.THEMES[1]
+end
+function D.SetTheme(key)
+  for _, t in ipairs(D.THEMES) do
+    if t.key == key then
+      D.Store().theme = key ~= "dark" and key or nil
+      D.Save()
+      D.Skin()
+      D.Dirty(true)
+      return true
+    end
+  end
+  return false
+end
+local skin                                                -- the colours of the theme that is on (nil = the family's own)
 local function rgb(name)
-  if T.rgb then return T.rgb(name) end
-  local h = T.hex[name] or T.hex.ink
+  local over = skin and skin[name]
+  if T.rgb and not over then return T.rgb(name) end
+  local h = over or T.hex[name] or T.hex.ink
   return tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255
 end
 
@@ -260,6 +293,7 @@ end
 D.SWITCHES = {
   -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
   { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
+  { "THEME", { { "dark", "Dark", theme = true }, { "drive", "Night drive", theme = true }, { "light", "Light", theme = true }, { "contrast", "High contrast", theme = true } } },
   { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" }, { "missing", "Addons you do not have" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
@@ -580,6 +614,14 @@ function PAINT.switch(w, o)
   local st0 = D.Store()
   st0.easy = type(st0.easy) == "table" and st0.easy or {}
   local isOn
+  if s.theme then
+    isOn = D.Theme().key == s[1]
+    say(w.a, s[2], 13, isOn and "ink" or "ink2")
+    say(w.b, isOn and "ON" or "", 12, "good", "RIGHT")
+    w.lit = isOn
+    w.act = function() D.SetTheme(s[1]) end
+    return
+  end
   if s.easy then isOn = st0.easy[s[1]] == true else isOn = st0.sw[s[1]] ~= false end
   say(w.a, s[2], 13, isOn and "ink" or "dim")
   say(w.b, isOn and "ON" or "OFF", 12, isOn and "good" or "dim", "RIGHT")
@@ -642,13 +684,12 @@ function D.Build()
   f:SetScript("OnDragStop", function() D.DragEnd() end)
   f.bg = f:CreateTexture(nil, "BACKGROUND")
   f.bg:SetAllPoints(f)
-  local r, g, b = rgb("ground")
-  f.bg:SetColorTexture(r, g, b, 0.97)
   if f.EnableMouseWheel then f:EnableMouseWheel(true) end
   f:SetScript("OnMouseWheel", function(_, delta) if not D.fight then D.Scroll(-(delta or 0)) end end)
   f:SetScript("OnHide", function() D.DragEnd() D.Sleep() end)
   f:Hide()
   D.frame = f
+  D.Skin()
   return f
 end
 function D.DragEnd()
@@ -705,6 +746,56 @@ function D.Preset(i)
   D.Dirty(true)
 end
 
+--- The theme's colours on what is not drawn afresh each paint: the ground, the hover wash, the words, the sky.
+function D.Skin()
+  local f, th = D.frame, D.Theme()
+  skin = next(th.hex) and th.hex or nil
+  if not f then return end
+  f.bg:SetColorTexture(rgb("ground"))
+  f.bg:SetAlpha(0.97)
+  for _, w in ipairs(f.pieces) do
+    w.a.tone, w.b.tone, w.c.tone = nil, nil, nil
+    local r, g, b = rgb("accent")
+    w.wash:SetColorTexture(r, g, b, 0.22)
+  end
+  D.Sky()
+end
+D.SKY_BAND = 8
+local ROOFS = { 5, 9, 3, 7, 11, 4, 8, 3, 10, 6, 4, 9, 5, 12, 3, 7 }       -- a skyline: heights, over and over
+--- The sky behind the head of the home screen, when the theme has one: bands, and roofs on the last of them. Never moves.
+function D.Sky()
+  local f, th = D.frame, D.Theme()
+  if not f then return end
+  f.sky = f.sky or {}
+  local want = th.sky and (D.page or "home") == "home" and th.key .. ":" .. math.floor(D.W or 0) or ""
+  if f.skyIs == want then return end
+  f.skyIs = want
+  local n = 0
+  local function bar(x, y, w, h, hex, layer)
+    n = n + 1
+    local t = f.sky[n]
+    if not t then t = f:CreateTexture(nil, "BORDER") f.sky[n] = t end
+    if t.SetDrawLayer then t:SetDrawLayer("BORDER", layer) end
+    t:ClearAllPoints()
+    t:SetPoint("TOPLEFT", f, "TOPLEFT", x, -y)
+    t:SetSize(w, h)
+    t:SetColorTexture(tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255, 1)
+    t:Show()
+  end
+  if want ~= "" then
+    for i, hex in ipairs(th.sky) do bar(0, (i - 1) * D.SKY_BAND, D.W, D.SKY_BAND, hex, 0) end
+    local foot, x, i = #th.sky * D.SKY_BAND, 0, 0
+    while x < D.W do
+      i = i + 1
+      local h, w = ROOFS[(i - 1) % #ROOFS + 1], 6 + (i * 5) % 9
+      w = math.min(w, D.W - x)
+      bar(x, foot - h, w, h, th.hex.ground, 1)
+      x = x + w + (i % 3)
+    end
+  end
+  for i = n + 1, #f.sky do f.sky[i]:Hide() end
+end
+
 --- Draw the deck: the model, its layout, a piece for each box.
 function D.Paint()
   local f = D.frame
@@ -713,6 +804,7 @@ function D.Paint()
   if D.skipAt ~= at then D.skipAt, D.skip = at, 0 end
   local m = D.Model()
   D.strong = (D.Store().easy or {}).strong and true or false
+  D.Sky()
   local boxes = T.DeckLayout(m.view, D.W, D.H, D.Store().sw)
   local n = 0
   local function put(o)

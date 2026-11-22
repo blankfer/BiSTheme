@@ -107,6 +107,7 @@ function D.Welcome()
     { phase = "SIZE", text = "Pull the corner, bottom right. Bigger shows more.", note = "It goes on by itself when you did.", done = w.size or s.w ~= nil, button = got("size", "GOOD SIZE") },
     { phase = "SHAPE", text = "Tall or wide? It remembers a place and size for each.", done = w.shape, button = { word = shape == "portrait" and "TRY WIDE" or "TRY TALL", fn = function() wel().shape = true D.Flip() end } },
     { phase = "EASIER", text = "Read aloud and stronger words are first in the switches. The gear opens them.", done = w.easy, button = { word = "OPEN THE SWITCHES", fn = function() wel().easy = true D.Save() D.page = "switches" end } },
+    { phase = "THEME", text = "Dark is the clean one. Light, high contrast and night drive are in the switches.", done = w.theme or st.theme ~= nil, button = { word = "PICK A THEME", fn = function() wel().theme = true D.Save() D.page = "switches" end } },
     { phase = "ICONS", text = "Gray icons are off or not installed: click one to read what it is. Hide any you do not want.", done = w.icons, button = { word = "OPEN APPS", fn = function() wel().icons = true D.Save() D.page = "BiSDeck:apps" end } },
     { phase = "PROFILES", text = "The deck follows you: leveling, dungeon, raid night, town, PvP. What matters there comes first.", done = w.profiles, button = got("profiles") },
   }

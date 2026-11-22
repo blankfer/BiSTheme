@@ -156,7 +156,7 @@ click(find("switch", 1))
 ok(D.Store().easy.speak == true and find("switch", 1).b.text == "ON", "and on with one press")
 click(find("switch", 1))
 ok(D.Store().easy.speak == nil, "and off again")
-click(find("switch", 3))
+click((function() for i = 1, count("switch") do if find("switch", i).a.text == "Live cards" then return find("switch", i) end end end)())
 ok(D.Store().sw.cards == false and saveA.deck == saveB.deck and saveA.deck.sw.cards == false, "a switch is kept, in every addon's save")
 click(find("gear"))
 ok(count("card") == 0, "no cards now")
@@ -389,11 +389,11 @@ do
   ok(D.page == "home" and count("app") > 0, "home", D.page)
   local wc
   for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then wc = find("card", i) end end
-  ok(wc and wc.b.text:find(" / 8", 1, true), "a card says how far you are", wc and wc.b.text)
+  ok(wc and wc.b.text:find(" / 9", 1, true), "a card says how far you are", wc and wc.b.text)
   D.Hide() D.Show()
   ok(D.page == "home", "it never opens by itself again", D.page)
   click(wc)
-  ok(D.page == "BiSDeck:welcome" and find("steptext").a.text:find("^Gray icons"), "the card goes on where you were", find("steptext") and find("steptext").a.text)
+  ok(D.page == "BiSDeck:welcome" and find("steptext").a.text:find("^Dark is the clean"), "the card goes on where you were", find("steptext") and find("steptext").a.text)
   -- the icons
   local function icon(name)
     D.page = "home" D.appSkip = nil D.Size(400, 760)
@@ -483,6 +483,59 @@ do
     end
   end
   D.page = "home"
+end
+
+-- THE THEMES (Arn, 22 Nov: the clean dark one first; Ryan-Gosling-mode is one you turn on; "other people can change the theme")
+do
+  local function hexOf(th, name) return th.hex[name] or T.hex[name] end
+  local function lum(h)
+    local function c(i) local v = tonumber(h:sub(i, i + 1), 16) / 255 return v <= 0.03928 and v / 12.92 or ((v + 0.055) / 1.055) ^ 2.4 end
+    return 0.2126 * c(1) + 0.7152 * c(3) + 0.0722 * c(5)
+  end
+  local function ratio(a, b) local x, y = lum(a), lum(b) if x < y then x, y = y, x end return (x + 0.05) / (y + 0.05) end
+  for _, th in ipairs(D.THEMES) do
+    for _, on in ipairs({ "ground", "card", "sunken" }) do
+      for name, least in pairs({ ink = 7, ink2 = 4.5, dim = 4.5, accent = 4.5, good = 4.5, gold = 4.5, warn = 4.5 }) do
+        local got = ratio(hexOf(th, name), hexOf(th, on))
+        ok(got >= least, th.name .. ": " .. name .. " on " .. on .. " can be read", string.format("%.2f", got))
+      end
+    end
+    ok(ratio(hexOf(th, "ink"), hexOf(th, "accentSoft")) >= 7, th.name .. ": the picked row can be read")
+    -- the head's words stand on the sky's bands (the title and the profile, 30 to 54 down)
+    for i, hex in ipairs(th.sky or {}) do
+      local y = (i - 1) * D.SKY_BAND
+      if y < 54 then ok(ratio(hexOf(th, "ink"), hex) >= 7 and (y >= 49 or ratio(hexOf(th, "accent"), hex) >= 4.5), th.name .. ": the words on sky band " .. i .. " can be read", string.format("%.2f", ratio(hexOf(th, "accent"), hex))) end
+    end
+  end
+  ok(T.hex.accent == "b980ff" and T.hex.ground == "08060d", "a theme never changes the family's own colours")
+  D.Store().theme = nil D.page = "home" D.Show() D.Flip("portrait") D.Size(260, 462)
+  ok(D.Theme().key == "dark" and #(D.frame.sky or {}) == 0, "dark until you change it: no sky")
+  D.page = "switches" D.Size(400, 760)
+  local function sw(name) for i = 1, count("switch") do local w = find("switch", i) if w.a.text == name then return w end end end
+  ok(sw("Dark") and sw("Dark").b.text == "ON" and sw("Dark").lit and sw("Night drive").b.text == "", "the switches: one theme is on, and it says so")
+  local ground = D.frame.bg.r
+  click(sw("Light"))
+  ok(D.Store().theme == "light" and sw("Light").b.text == "ON" and sw("Dark").b.text == "" and D.frame.bg.r > 0.9 and ground < 0.1, "light: at once, the ground too", D.frame.bg.r)
+  ok(sw("Light").a.col < 0.2, "and its words are dark", sw("Light").a.col)
+  click(sw("Night drive"))
+  D.page = "home" D.Paint()
+  local shown = 0 for _, t in ipairs(D.frame.sky) do if t.shown then shown = shown + 1 end end
+  ok(shown > 8 + 10, "night drive: a sky and roofs on home", shown)
+  local same = calls
+  local made0 = #made
+  D.Paint()
+  ok(#made == made0, "painted again: nothing new is made", #made - made0)
+  D.Size(400, 700)
+  D.Open("BiSTools:bosses")
+  shown = 0 for _, t in ipairs(D.frame.sky) do if t.shown then shown = shown + 1 end end
+  ok(shown == 0, "never behind a list", shown)
+  D.page = "home" D.Flip("landscape")
+  for _, t in ipairs(D.frame.sky) do if t.shown then ok(t.pts[1][4] + t.w <= D.W + 0.01, "the sky stays inside", t.pts[1][4] + t.w) end end
+  D.Flip("portrait")
+  ok(D.SetTheme("nothing") == false and D.Theme().key == "drive", "a name it does not know: no change")
+  D.Store().theme = "gone" ok(D.Theme().key == "dark", "a saved theme that is gone: dark")
+  D.SetTheme("dark")
+  ok(D.Store().theme == nil, "back to dark")
 end
 
 -- an older copy loading after: refused; a newer one takes over the data and builds its own frame
