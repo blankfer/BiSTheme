@@ -48,6 +48,28 @@ local D = T.Deck or {}
 T.Deck = D
 D.defs = D.defs or {}                                     -- owner:key -> def (kept across copies)
 D.MINOR = MINOR
+-- THE SURFACES: the phone (D.mainSurf) and every app pulled out of it (DeckWindows.lua) are painted by the same code. What belongs
+-- to one of them stands in D while it is its turn; D.On(surface, fn) is the only way to take a turn.
+D.mainSurf = D.mainSurf or {}
+D.surf = D.surf or D.mainSurf
+local SURF = { "frame", "page", "W", "H", "shape", "skip", "skipAt", "grip", "dirty", "ticking", "cardSkip", "appSkip" }
+local function turn(from, to)
+  for _, k in ipairs(SURF) do from[k] = D[k] D[k] = to[k] end
+  if from.def then from.tab = from.def.tab from.def.tab = from.keepTab end      -- (a window has its own tab of the app)
+  if to.def then to.keepTab = to.def.tab to.def.tab = to.tab end
+  D.surf = to
+end
+function D.On(s, fn, ...)
+  local cur = D.surf
+  if cur == s or not s then return fn(...) end
+  turn(cur, s)
+  local fine, a, b = pcall(fn, ...)
+  turn(s, cur)
+  if not fine then error(a, 0) end
+  return a, b
+end
+--- Run by the phone itself, whoever asks.
+function D.Phone(fn, ...) return D.On(D.mainSurf, fn, ...) end
 D.STRATA, D.FIGHT_STRATA = "HIGH", "LOW"                   -- over the bars and cards (22 Nov: the healing bars drew through it); in a fight under them
 local HOMES = { portrait = { 260, 462 }, landscape = { 600, 420 } }
 D.PROFILES = { "Leveling", "Dungeon", "Raid night", "Town", "PvP" }
@@ -503,10 +525,10 @@ end
 
 -- THE SKIN ----------------------------------------------------------------------------------------------------------
 
-local CLICK = { close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, hero = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
+local CLICK = { out = 1, close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, hero = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
   link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1, cardout = 1, cardend = 1, less = 1, plus = 1, side = 1, morecards = 1 }
 local LOOK = {                                            -- kind -> ground colour, alpha
-  card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 }, find = { "sunken", 1 },
+  card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, out = { "sunken", 0.8 }, row = { "sunken", 0.55 }, find = { "sunken", 1 },
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
   cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "card", 1 }, railapp = { "card", 1 },
@@ -552,9 +574,18 @@ local function piece(parent)
   end)
   w:SetScript("OnLeave", function(self) self.wash:Hide() if GameTooltip then GameTooltip:Hide() end end)
   w:RegisterForDrag("LeftButton")                          -- (a card is pulled out by dragging it: DeckPins.lua)
-  w:SetScript("OnDragStart", function(self) if self.dragId and not D.fight and D.PinOut then D.PinOut(self.dragId, true) end end)
-  w:SetScript("OnDragStop", function() if D.PinDrop then D.PinDrop() end end)
-  w:SetScript("OnClick", function(self) if self.act and not D.fight then self.act() end end)
+  w:SetScript("OnDragStart", function(self)                -- (... and an app by its icon or its OUT key: DeckWindows.lua)
+    if D.fight then return end
+    if self.dragApp and D.WinOut then D.WinOut(self.dragApp, true)
+    elseif self.dragId and D.PinOut then D.PinOut(self.dragId, true) end
+  end)
+  w:SetScript("OnDragStop", function() if D.PinDrop then D.PinDrop() end if D.WinDrop then D.WinDrop() end end)
+  w:SetScript("OnClick", function(self)
+    if not self.act or D.fight then return end
+    local s = self.surf or D.mainSurf
+    D.On(s, self.act)
+    if s.id and D.WinAfter then D.WinAfter(s) end
+  end)
   return w
 end
 
@@ -631,7 +662,19 @@ function PAINT.status(w, o, m)
   w.tip = table.concat(words, "\n")
   w.aloud = table.concat(words, ", ")
 end
-function PAINT.close(w) say(w.a, "x", 12, "ink2", "CENTER") w.act = function() D.Hide() end w.tip = "Close" end
+function PAINT.close(w)
+  say(w.a, "x", 12, "ink2", "CENTER")
+  local id = D.surf.id
+  w.act = id and function() D.WinClose(id) end or function() D.Hide() end
+  w.tip = id and "Back into the phone" or "Close"
+end
+function PAINT.out(w, o, m)
+  say(w.a, "OUT", 11, "ink2", "CENTER")
+  local id = m.def.id
+  w.dragApp = id
+  w.act = function() D.WinOut(id) end
+  w.tip = "Drag it out: a window of its own. Its x puts it back."
+end
 function PAINT.shape(w) say(w.a, T.DeckShape(D.W, D.H) == "portrait" and "[ ]" or "|", 11, "ink2", "CENTER") w.act = function() D.Flip() end w.tip = "Tall / wide" end
 function PAINT.gear(w) say(w.a, "*", 14, "ink2", "CENTER") w.act = function() D.page = (D.page == "switches") and "home" or "switches" D.Dirty(true) end w.tip = "Switches and size" end
 function PAINT.back(w) say(w.a, "<", 15, "accent", "CENTER") w.act = function() D.page = "home" D.Dirty(true) end end
@@ -695,6 +738,7 @@ function PAINT.app(w, o, m)
   if type(n) == "number" and n > 0 then say(w.b, tostring(n), 11, gray and "dim" or "gold", "RIGHT")
   else say(w.b, o.kind == "app" and ({ off = "OFF", missing = "GET", dev = "DEV" })[state] or "", 10, "dim", "RIGHT") end   -- (a word, never the gray alone)
   w.act = function() D.Open(d.id) end
+  if D.WinCan and D.WinCan(d.id) then w.dragApp = d.id end
   w.tip = (d.name or d.key) .. (({ off = " - off: what it is, and a button to turn it on", missing = " - you do not have it: what it is", dev = " - a tool of ours" })[state] or "")
 end
 PAINT.railapp = PAINT.app
@@ -750,20 +794,25 @@ function PAINT.find(w, o, m)
     e:SetMaxLetters(120)
     e:SetTextInsets(7, 7, 0, 0)
     e:SetFont(D.FONT, 13, "")
+    e.surf = D.surf
     e:SetScript("OnTextChanged", function(self, user)
       if self.quiet or user == false then return end
       local words = self:GetText() or ""
-      if self.x and self.x.set then D.Call(self.def, "find", self.x.set, words) end
-      D.skip = 0
-      if self.hint then self.hint:SetShown(words == "") end
-      D.soon = true
-      D.Dirty()
+      D.On(self.surf, function()
+        if self.x and self.x.set then D.Call(self.def, "find", self.x.set, words) end
+        D.skip = 0
+        if self.hint then self.hint:SetShown(words == "") end
+        if self.surf.id then D.winSoon = true else D.soon = true end
+        D.Dirty()
+      end)
     end)
     e:SetScript("OnEnterPressed", function(self)
       local go, words = self.x and self.x.enter, self:GetText() or ""
       self:ClearFocus()
-      if go then D.Call(self.def, "find", go, words) if self.def then D.Used(self.def) end end
-      D.Dirty(true)
+      D.On(self.surf, function()
+        if go then D.Call(self.def, "find", go, words) if self.def then D.Used(self.def) end end
+        D.Dirty(true)
+      end)
     end)
     e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
     e:SetScript("OnHide", function(self) self:ClearFocus() end)
@@ -844,6 +893,33 @@ function D.HERO.radio(w, o, h)
   for i = 1, 9 do
     local high = h.on and 3 + ((t * 7 + i * i * 5 + (t % 3) * i) % 13) or 2
     bar(w, 80 + i, W - pad - 9 * 5 + (i - 1) * 5, 10 + 16 - high, 3, high, h.on and (high > 11 and "gold" or "accent") or "line2")
+  end
+end
+--- A creature, in 3D at the right, its name at the left (h.creature = npc id or h.display). One model a deck; a model that was
+--- hidden is loaded again (a hidden one may lose its picture), never at every paint.
+function D.HERO.model(w, o, h)
+  say(w.c, h.small or "", 11, "accent")
+  say(w.a, h.big or "", 18, "ink")
+  say(w.b, "", 11)
+  local f = D.frame
+  local v = f.model
+  if not v then
+    v = CreateFrame("PlayerModel", nil, f)
+    f.model = v
+    v:EnableMouse(false)
+  end
+  f.modelAt = D.paints
+  v:ClearAllPoints()
+  v:SetPoint("TOPRIGHT", w, "TOPRIGHT", -2, -2)
+  v:SetSize(math.max(40, math.floor(o.w * 0.55)), math.max(40, o.h - 4))
+  v:SetFrameLevel((f:GetFrameLevel() or 1) + 3)
+  local key = h.display and "d" .. h.display or h.creature and "c" .. h.creature or nil
+  if not key then v:Hide() f.modelKey = nil return end
+  v:Show()
+  if f.modelKey ~= key then
+    f.modelKey = key
+    pcall(v.ClearModel, v)
+    if h.display then pcall(v.SetDisplayInfo, v, h.display) else pcall(v.SetCreature, v, h.creature) end
   end
 end
 function PAINT.hero(w, o, m)
@@ -1114,6 +1190,11 @@ function D.Skin()
   end
   wear(f.pieces)
   for _, p in pairs(D.pinFrames or {}) do wear(p.pieces) end
+  for _, s in pairs(D.winSurfs or {}) do
+    s.frame.bg:SetColorTexture(rgb("ground"))
+    s.frame.bg:SetAlpha(0.97)
+    wear(s.frame.pieces)
+  end
   if D.PinsPaint then D.PinsPaint() end
   D.Sky()
 end
@@ -1202,11 +1283,13 @@ end
 --- Draw the deck: the model, its layout, a piece for each box.
 function D.Paint()
   local f = D.frame
-  if not (f and f:IsShown()) or D.pinHeld then return 0 end
+  if not (f and f:IsShown()) or ((D.pinHeld or D.winHeld) and D.surf == D.mainSurf) then return 0 end
   D.ticking = nil
   local at = (D.page or "home") .. ":" .. tostring((D.defs[D.page or ""] or {}).tab)
   if D.skipAt ~= at then D.skipAt, D.skip = at, 0 end
   local m = D.Model()
+  if D.surf.id then m.view.win, m.view.apps = true, 0
+  elseif m.def and D.WinCan and D.WinCan(m.def.id) and not m.about then m.view.out = true end
   D.paints = (D.paints or 0) + 1
   D.strong = (D.Store().easy or {}).strong and true or false
   D.Sky()
@@ -1217,6 +1300,7 @@ function D.Paint()
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
     w.act, w.tip, w.hot, w.lit, w.dragId, w.keys, w.aloud = nil, nil, nil, nil, nil, nil, nil
+    w.dragApp, w.surf = nil, D.surf
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
@@ -1278,6 +1362,7 @@ function D.Paint()
   end
   for i = n + 1, #f.pieces do f.pieces[i]:Hide() end
   if f.find and f.findAt ~= D.paints then f.find:Hide() end
+  if f.model and f.modelAt ~= D.paints then f.model:Hide() f.modelKey = nil end
   f.corner:SetFrameLevel((f:GetFrameLevel() or 1) + 8)
   f.corner:EnableMouse(not D.fight)
   D.dirty = nil
@@ -1319,7 +1404,9 @@ end
 --- Something changed: painted at the next beat (`now` = at once), only while shown.
 function D.Dirty(now)
   D.dirty = true
-  if D.pinHeld then return end                             -- (a card is under the mouse: see DeckPins.lua)
+  D.dirtyN = (D.dirtyN or 0) + 1
+  if D.surf ~= D.mainSurf then D.mainSurf.dirty = true end  -- (the phone may show the same thing)
+  if (D.pinHeld or D.winHeld) and D.surf == D.mainSurf then return end                             -- (a card is under the mouse: see DeckPins.lua)
   if now and D.frame and D.frame:IsShown() then D.Paint() end
 end
 
@@ -1382,6 +1469,7 @@ end
 
 --- An icon, a card, a handle: its page, or what `open` runs, or (not on) what it is.
 function D.Open(id)
+  if D.surf ~= D.mainSurf then return D.Phone(D.Open, id) end
   local d = D.defs[id]
   if not d then return false end
   if d.open and D.State(d) == "on" then
@@ -1396,6 +1484,7 @@ function D.Open(id)
   return true
 end
 function D.Show()
+  if D.surf ~= D.mainSurf then return D.Phone(D.Show) end
   if not T.DECK_LOGIN then return false end
   D.Build()
   local st = D.Store()
@@ -1408,8 +1497,12 @@ function D.Show()
   st.open = true
   return true
 end
-function D.Hide() if D.frame then D.Store().open = false D.frame:Hide() D.Save() end end
-function D.Toggle() if D.frame and D.frame:IsShown() then D.Hide() else D.Show() end end
+function D.Hide()
+  if D.surf ~= D.mainSurf then return D.Phone(D.Hide) end
+  if D.frame then D.Store().open = false D.frame:Hide() D.Save() end end
+function D.Toggle()
+  if D.surf ~= D.mainSurf then return D.Phone(D.Toggle) end
+  if D.frame and D.frame:IsShown() then D.Hide() else D.Show() end end
 
 -- one beat, only while shown: a dirty deck paints, a held corner sizes
 function D.Wake()

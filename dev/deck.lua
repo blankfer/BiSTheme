@@ -1080,6 +1080,116 @@ do
   ok(D.Store().theme == nil, "back to dark")
 end
 
+-- AN APP PULLED OUT (Arn, 22 Nov: "i want them to open in the phone like apps ... its only when i drag a window out that it becomes an
+-- app in the screen not in the phone, or if i drag a live tile it stays like a tile")
+do
+  local down, over = true, false
+  local keepB = _G.IsMouseButtonDown
+  _G.IsMouseButtonDown = function() return down end
+  assert(loadfile("DeckWindows.lua"))()
+  local words, heard, off = "", 0, false
+  D.Register{ owner = "BiSWin", key = "a", name = "Wind", icon = "Wi", order = 0.1, page = { tabs = function() return { "ONE", "TWO" } end,
+    find = function() return { get = function() return words end, set = function(v) words = v end } end,
+    rows = function(tab) local o = { { text = "T" .. tab .. words, act = { word = "hear", fn = function() heard = heard + 1 end } }, { text = "Go", act = { word = "go", fn = function() D.Open("BiSWin:b") end } },
+      { text = "Away", act = { word = "x", fn = function() D.page = "home" end } } } for k = 4, 40 do o[k] = { text = "r" .. k } end return o end,
+    hero = function() return { art = "model", creature = 1234, big = "Magra" } end } }
+  D.Register{ owner = "BiSWin", key = "b", name = "Other", icon = "Ot", order = 0.2, state = function() return off and "off" or "on" end, page = { text = function() return "other" end } }
+  D.Register{ owner = "BiSWin", key = "c", name = "Opens", icon = "Op", order = 0.3, open = function() end }
+  D.frame.IsMouseOver = function() return over end
+  D.Store().sw, D.Store().off = {}, nil
+  D.page = "home" D.Show() D.Flip("portrait") D.Size(300, 620)
+  local function icon2(name) for k = 1, count("app") do local w = find("app", k) if w.c.text == name then return w end end end
+  local function wfind(s, kind, k) local c = 0 for _, w in ipairs(s.frame.pieces) do if w.shown and w.kind == kind then c = c + 1 if c == (k or 1) then return w end end end end
+  ok(icon2("Wind").dragApp == "BiSWin:a" and not icon2("Opens").dragApp, "an app with a page can be dragged out; one that opens its own window can not")
+  click(icon2("Wind"))
+  ok(D.page == "BiSWin:a" and find("out") and find("model") == nil and D.frame.model and D.frame.model.shown, "an icon opens it IN the phone, with the creature's model")
+  click(find("back"))
+  ok(not D.frame.model.shown, "home: no model left standing")
+  -- dragged out by its icon
+  local tile = icon2("Wind")
+  cx, cy = 900, 600
+  tile.scripts.OnDragStart(tile)
+  local s = D.winSurfs["BiSWin:a"]
+  ok(s and s.frame.shown and s.frame.isMoving and D.IsOut("BiSWin:a") and D.page == "home" and D.surf == D.mainSurf, "dragged out: under the mouse, the phone stays where it was")
+  ok(tile.shown, "and the piece that is dragged is not painted away")
+  s.frame.GetPoint = function() return "TOP", UIParent, "BOTTOMLEFT", 900, 614 end
+  tile.scripts.OnDragStop(tile)
+  ok(not s.frame.isMoving and s.frame.shown and D.Wins()["BiSWin:a"].pos[3] == 900 and D.Wins()["BiSWin:a"].w == D.WIN_W, "let go: it stands there, kept")
+  ok(not wfind(s, "clock") and not wfind(s, "home") and not wfind(s, "railapp") and not wfind(s, "back") and wfind(s, "close") and wfind(s, "size") and wfind(s, "code") and wfind(s, "title").a.text == "Wind", "a window: its name, x, the corner, the faint code")
+  ok(s.frame.corner.mouse, "its corner")
+  -- its own tab, search, scroll; the phone's own beside it
+  click(wfind(s, "tab", 2))
+  ok(wfind(s, "row").a.text == "T2" and D.defs["BiSWin:a"].tab ~= 2, "its own tab")
+  D.Open("BiSWin:a") ok(find("row").a.text == "T1" and D.frame ~= s.frame, "the phone has its own")
+  click(find("back"))
+  local e = s.frame.find
+  e.text = "bell" e.scripts.OnTextChanged(e, true)
+  ok(words == "bell" and D.surf == D.mainSurf, "its own search line")
+  D.winRoot.scripts.OnUpdate(D.winRoot, 0.2)
+  ok(wfind(s, "row").a.text == "T2bell", "painted at once while typing", wfind(s, "row").a.text)
+  words = "" D.WinPaint("BiSWin:a", true)
+  local first = wfind(s, "row").a.text
+  s.frame.scripts.OnMouseWheel(s.frame, -1)
+  ok((s.skip or 0) > 0 and (D.skip or 0) == 0, "its own wheel", tostring(s.skip))
+  s.frame.scripts.OnMouseWheel(s.frame, 1)
+  heard = 0 click(wfind(s, "row")) ok(heard == 1, "a row does what it does in the phone")
+  -- it opens another app: on the phone
+  click(wfind(s, "row", 2))
+  ok(D.page == "BiSWin:b" and s.frame.shown and s.page == "BiSWin:a", "another app opens on the phone, the window stays")
+  click(find("back"))
+  -- resized
+  cx, cy, down = 500, 500, true
+  s.frame.corner.scripts.OnMouseDown(s.frame.corner, "LeftButton")
+  cx, cy = 560, 440
+  D.winRoot.scripts.OnUpdate(D.winRoot, 0.06)
+  ok(s.W > D.WIN_W and s.H > D.WIN_H and D.W == 300, "the corner: this window, not the phone", s.W)
+  down = false
+  D.winRoot.scripts.OnUpdate(D.winRoot, 0.06)
+  ok(D.winGrip == nil and D.Wins()["BiSWin:a"].w == s.W, "let go and never told: kept")
+  s.frame.corner.scripts.OnDoubleClick(s.frame.corner) ok(s.W == D.WIN_W and s.H == D.WIN_H, "double-click: its normal size")
+  -- a beat with nothing new paints nothing
+  D.winRoot.scripts.OnUpdate(D.winRoot, 1.1)
+  local was = D.paints
+  D.winRoot.scripts.OnUpdate(D.winRoot, 1.1) ok(D.paints == was, "nothing new: not painted")
+  D.Phone(D.Dirty) D.winRoot.scripts.OnUpdate(D.winRoot, 1.1) ok(D.paints == was + 1, "something new: once")
+  -- a fight
+  fire("PLAYER_REGEN_DISABLED")
+  ok(s.frame.alpha == D.FIGHT_ALPHA and s.frame.mouse == false and s.frame.strata == D.FIGHT_STRATA and not s.frame.corner.mouse, "a fight: faint, clicks go through, under the bars")
+  local any
+  for _, w in ipairs(s.frame.pieces) do if w.shown and w.mouse then any = w.kind end end
+  ok(not any and not e.shown, "nothing on it takes a click", any)
+  fire("PLAYER_REGEN_ENABLED") ok(s.frame.alpha == 1 and s.frame.mouse, "after it: back")
+  D.Store().sw.pinfight = false fire("PLAYER_REGEN_DISABLED") ok(not s.frame.shown, "or gone, with the switch") fire("PLAYER_REGEN_ENABLED") ok(s.frame.shown, "and back")
+  D.Store().sw.pinfight = nil
+  -- the phone shut: it stays
+  D.Hide() ok(s.frame.shown and not D.frame.shown, "the phone shut: the window stays")
+  click(wfind(s, "row", 2)) ok(D.frame.shown and D.page == "BiSWin:b", "what it opens opens the phone") click(find("back"))
+  -- x, over the phone, home
+  click(wfind(s, "close")) ok(not s.frame.shown and not D.IsOut("BiSWin:a"), "x: back into the phone")
+  D.Open("BiSWin:a") click(find("out")) ok(s.frame.shown and D.page == "home", "OUT: out, the phone goes home")
+  down, over = true, true
+  s.frame.scripts.OnDragStart(s.frame) s.frame.scripts.OnDragStop(s.frame)
+  ok(not s.frame.shown and not D.IsOut("BiSWin:a"), "dropped on the phone: back into it")
+  over = false
+  D.WinOut("BiSWin:a") click(wfind(s, "row", 3)) ok(not D.IsOut("BiSWin:a") and not s.frame.shown, "it goes home: the window closes")
+  -- its tool is switched off: gone, its place kept
+  D.WinOut("BiSWin:b") local sb = D.winSurfs["BiSWin:b"]
+  ok(sb.frame.shown, "another one out")
+  off = true D.Phone(D.Dirty) D.winRoot.scripts.OnUpdate(D.winRoot, 1.1) ok(not sb.frame.shown and D.IsOut("BiSWin:b"), "switched off: gone, its place kept")
+  off = false D.Phone(D.Dirty) D.winRoot.scripts.OnUpdate(D.winRoot, 1.1) ok(sb.frame.shown, "on again: back")
+  D.Off(true) ok(not sb.frame.shown, "the deck off: nothing of it left") D.Off(false) ok(sb.frame.shown, "on: back")
+  D.SetTheme("light") D.SetTheme("dark")
+  -- an error in a window's app never leaves the phone on the wrong surface
+  D.Register{ owner = "BiSWin", key = "e", name = "Err", order = 0.4, page = { rows = function() error("boom") end } }
+  D.WinOut("BiSWin:e") ok(D.surf == D.mainSurf and D.frame ~= D.winSurfs["BiSWin:e"].frame, "an error: the phone is the phone")
+  D.WinClose("BiSWin:e") D.WinClose("BiSWin:b")
+  D.winRoot.scripts.OnUpdate = D.winRoot.scripts.OnUpdate
+  ok(next(D.Wins()) == nil and D.winRoot.scripts.OnUpdate == nil, "none out: no beat")
+  for k = #made, 1, -1 do if made[k].secureTemplate then ok(false, "nothing secure") end end
+  D.defs["BiSWin:a"], D.defs["BiSWin:b"], D.defs["BiSWin:c"], D.defs["BiSWin:e"] = nil, nil, nil, nil
+  _G.IsMouseButtonDown = keepB
+  D.page = "home" D.Paint()
+end
 -- an older copy loading after: refused; a newer one takes over the data and builds its own frame
 local old = D.frame
 assert(loadfile("Deck.lua"))()

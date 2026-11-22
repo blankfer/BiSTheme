@@ -37,7 +37,7 @@ local L = {
   BOX_H = 36, TAB_H = 24, STRIP = 4, ROW = 24, ROW_MIN_W = 170, SAY = 14,
   BIG = 36, KEY = 24, LINK = 24,
   LINE = 18, NOTE = 15, PROG = 5,
-  FOOT = 24, RAIL = 60,
+  FOOT = 24, RAIL = 60, OUT = 32,
   RAIL_WIDE = 132, RAIL_WIDE_H = 34, RAIL_NAMES = 760,     -- a wide deck's rail says the names; from this width on
   GRID_H = 460,                                  -- a wide home at least this tall is a home screen (icons with names), not a rail
   APP_K = { 1.7, 1.4, 1.2 },                     -- the icons grow to the largest of these with which all of them still fit
@@ -95,11 +95,21 @@ local function fit(n, w, least)
 end
 
 --- The top of every view: clock left, x right; the kicker and the title. Answers the y under it.
-local function head(out, x, y, w, back, sw)
+local function head(out, x, y, w, back, sw, v)
+  if v and v.win then                                        -- an app out on the screen: its name, whose it is, x
+    local kw = min(110, w * 0.34)
+    out[#out + 1] = { kind = "close", x = x + w - L.HIT, y = y, w = L.HIT, h = L.TITLE }
+    out[#out + 1] = { kind = "kicker", x = x + w - L.HIT - L.GAP - kw, y = y + (L.TITLE - L.KICK) / 2, w = kw, h = L.KICK }
+    out[#out + 1] = { kind = "title", x = x, y = y, w = w - kw - L.HIT - 3 * L.GAP, h = L.TITLE }
+    return y + L.TITLE + L.GAP
+  end
   -- (the signs - signal, WiFi, battery - between the grip and the two keys: DeckStatus.lua)
   local signs = on(sw, "signs") and L.SIGNS + L.GAP or 0
+  local ow = v and v.out and L.OUT + L.GAP or 0              -- OUT: this app as a window of its own
+  if ow > 0 and w < 236 then signs = 0 end
   out[#out + 1] = { kind = "clock", x = x, y = y, w = L.CLOCK, h = L.STATUS }
-  out[#out + 1] = { kind = "grip", x = x + L.CLOCK + L.GAP, y = y, w = max(20, w - L.CLOCK - 2 * L.HIT - 4 * L.GAP - signs), h = L.STATUS }
+  out[#out + 1] = { kind = "grip", x = x + L.CLOCK + L.GAP, y = y, w = max(20, w - L.CLOCK - 2 * L.HIT - 4 * L.GAP - signs - ow), h = L.STATUS }
+  if ow > 0 then out[#out + 1] = { kind = "out", x = x + w - 2 * L.HIT - 2 * L.GAP - signs - L.OUT, y = y, w = L.OUT, h = L.STATUS } end
   if signs > 0 then out[#out + 1] = { kind = "status", x = x + w - 2 * L.HIT - 2 * L.GAP - L.SIGNS, y = y, w = L.SIGNS, h = L.STATUS } end
   out[#out + 1] = { kind = "close", x = x + w - L.HIT, y = y, w = L.HIT, h = L.STATUS }
   out[#out + 1] = { kind = "shape", x = x + w - 2 * L.HIT - L.GAP, y = y, w = L.HIT, h = L.STATUS }
@@ -113,8 +123,14 @@ local function head(out, x, y, w, back, sw)
 end
 
 --- The foot: the switches key left, the home bar middle, the faint code right. Answers the y of its top.
-local function foot(out, x, bottom, w, sw)
+local function foot(out, x, bottom, w, sw, v)
   local y = bottom - L.FOOT
+  if v and v.win then
+    local cw = min(120, w * 0.5)
+    if on(sw, "code") then out[#out + 1] = { kind = "code", x = x + w - cw - L.HIT - 4, y = y, w = cw, h = L.FOOT } end
+    out[#out + 1] = { kind = "size", x = x + w - L.HIT, y = y, w = L.HIT, h = L.FOOT }
+    return y - L.GAP
+  end
   out[#out + 1] = { kind = "gear", x = x, y = y, w = L.HIT, h = L.FOOT }
   local cw = min(120, w * 0.36)
   out[#out + 1] = { kind = "home", x = x + L.HIT + 4, y = y, w = max(20, w - L.HIT - cw - L.HIT - 12), h = L.FOOT }
@@ -327,8 +343,8 @@ end
 
 local function page(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
-  local y = head(out, x, 6, W, true, sw)
-  local bottom = foot(out, x, h - 5, W, sw)
+  local y = head(out, x, 6, W, true, sw, v)
+  local bottom = foot(out, x, h - 5, W, sw, v)
   local nb = on(sw, "boxes") and (v.boxes or 0) or 0
   local nt = on(sw, "tabs") and (v.tabs or 0) or 0
   local hero = v.hero and on(sw, "hero")
@@ -428,8 +444,8 @@ end
 
 local function steps(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
-  local y = head(out, x, 6, W, true, sw)
-  local bottom = foot(out, x, h - 5, W, sw)
+  local y = head(out, x, 6, W, true, sw, v)
+  local bottom = foot(out, x, h - 5, W, sw, v)
   local list = on(sw, "list")
   if T.DeckShape(w, h) == "landscape" then
     local lw = list and max(L.ROW_MIN_W, floor(W * 0.40)) or 0
@@ -458,8 +474,8 @@ end
 --- The switches: presets, a group head and its rows, the size sliders at the bottom.
 local function switches(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
-  local y = head(out, x, 6, W, true, sw)
-  local bottom = foot(out, x, h - 5, W, sw)
+  local y = head(out, x, 6, W, true, sw, v)
+  local bottom = foot(out, x, h - 5, W, sw, v)
   local c = column(out, x, y, W, bottom - y)
   local py = c.y0
   c.y0 = py + L.KEY + L.GAP

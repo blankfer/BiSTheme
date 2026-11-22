@@ -14,6 +14,7 @@ Pad.lua
 DeckLayout.lua
 Deck.lua
 DeckPins.lua
+DeckWindows.lua
 DeckStatus.lua
 DeckApps.lua
 DeckAPI.lua
