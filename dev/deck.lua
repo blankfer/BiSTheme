@@ -173,7 +173,7 @@ D.Preset(1)
 ok(count("card") >= 2, "ALL: back")
 -- sizes and shapes
 D.Flip()
-ok(T.DeckShape(D.W, D.H) == "landscape" and count("railapp") >= 2 and count("card") >= 2, "flipped: wide, the icons on a rail")
+ok(T.DeckShape(D.W, D.H) == "landscape" and count("railapp") + count("app") >= 2 and count("card") >= 2, "flipped: wide, its icons and its cards")
 D.Open("BiSTools:bosses")
 ok(count("row") > 4, "the list at the left")
 D.Flip()

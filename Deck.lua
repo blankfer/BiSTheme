@@ -1142,7 +1142,7 @@ end
 --- How many letters of a 12 px line fit the words' box (a wide deck has them beside its list).
 function D.Letters()
   local W = (D.W or 260) - 20
-  if D.shape == "landscape" then W = (W - (W >= 560 and (W >= T.DECK_L.RAIL_NAMES and 140 or 60) or 0)) * 0.55 end
+  if D.shape == "landscape" then W = (W - (W >= 560 and (W >= T.DECK_L.RAIL_PAGE and 140 or 60) or 0)) * 0.55 end
   return math.max(24, math.floor((W - 16) / 5.6))
 end
 --- A new size (the corner, the sliders): kept for the shape it has. Pulled wider than tall it IS the wide deck, and back (Arn,

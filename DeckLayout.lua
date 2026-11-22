@@ -38,8 +38,8 @@ local L = {
   BIG = 36, KEY = 24, LINK = 24,
   LINE = 18, NOTE = 15, PROG = 5,
   FOOT = 24, RAIL = 60, OUT = 32,
-  RAIL_WIDE = 132, RAIL_WIDE_H = 34, RAIL_NAMES = 760,     -- a wide deck's rail says the names; from this width on
-  GRID_H = 460,                                  -- a wide home at least this tall is a home screen (icons with names), not a rail
+  RAIL_WIDE = 132, RAIL_WIDE_H = 34, RAIL_NAMES = 380, RAIL_PAGE = 640,   -- the rail says the names from this width on (home; beside a page)
+  GRID_ROWS = 2,                                 -- a wide home is a home screen (icons with names) when this many rows of them fit under its cards
   APP_K = { 1.7, 1.4, 1.2 },                     -- the icons grow to the largest of these with which all of them still fit
   HERO_MIN = 70, HERO_SHARE = 0.28,
   MAX_CARDS = 6,
@@ -177,8 +177,7 @@ local function dock(out, n, x, y, w)
 end
 
 --- The rail of apps down the left side (landscape). Answers the x after it.
-local function rail(out, n, x, y, h, skip, w)
-  local wide = (w or 0) >= L.RAIL_NAMES
+local function rail(out, n, x, y, h, skip, wide)
   local rw, rh = wide and L.RAIL_WIDE or L.RAIL - 8, wide and L.RAIL_WIDE_H or L.RAIL - 8
   local room = max(1, floor((h + L.GAP) / (rh + L.GAP)))
   local at, show, more = pageOf(n, room, skip)
@@ -262,16 +261,20 @@ local function home(out, v, w, h, sw)
   end
   if T.DeckShape(w, h) == "landscape" then
     -- A HOME SCREEN when it is tall enough (cards on top, the icons with their names under them), else cards beside a rail
-    local grid = nApps > 0 and h >= L.GRID_H
+    -- (Arn, 22 Nov, at 879 wide: "i gotta go this far for the shelf to open on the side to see the names plenty of room")
+    local cardRows = nCards > 0 and ceil(nCards / fit(nCards, W, L.CARD_MIN_W)) or 0
+    local spare = bottom - y - cardRows * (L.CARD + L.CARD_BTN + 2 * L.GAP)
+    local cols, gridRows = fit(99, W, L.APP_W), floor(spare / (L.APP_H + L.GAP))
+    local grid = nApps > 0 and gridRows >= 1 and (gridRows >= L.GRID_ROWS or cols * gridRows >= nApps)
     if nApps > 0 and W >= 360 and not grid then
-      local nx = rail(out, nApps, x, y, bottom - y, v.appSkip, W)
+      local nx = rail(out, nApps, x, y, bottom - y, v.appSkip, W >= L.RAIL_NAMES)
       W, x = W - (nx - x), nx
     end
     local floorY = bottom
     if grid then
       -- (what the icons need, at least two rows of them, never more than two thirds)
       local need = ceil(nApps / fit(99, W, L.APP_W)) * (L.APP_H + L.GAP)
-      floorY = bottom - min(max(need, 2 * (L.APP_H + L.GAP)), floor((bottom - y) * 0.6))
+      floorY = bottom - min(max(need, L.GRID_ROWS * (L.APP_H + L.GAP)), spare)
     end
     if nCards > 0 then
       local per = fit(nCards, W, L.CARD_MIN_W)
@@ -350,7 +353,7 @@ local function page(out, v, w, h, sw)
   local hero = v.hero and on(sw, "hero")
   if T.DeckShape(w, h) == "landscape" then
     if (v.apps or 0) > 0 and W >= 560 then
-      local nx = rail(out, v.apps, x, y, bottom - y, v.appSkip, W)
+      local nx = rail(out, v.apps, x, y, bottom - y, v.appSkip, W >= L.RAIL_PAGE)
       W, x = W - (nx - x), nx
     end
     -- the list left, the detail right

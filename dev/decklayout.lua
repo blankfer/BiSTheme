@@ -147,8 +147,16 @@ do
   ok(c.app == 24 and not c.railapp and not c.moreapps, "637 x 636: every icon with its name, no rail", tostring(c.app))
   ok(c.k and c.k > 1 and far > 636 * 0.6, "and they fill it: bigger icons", tostring(c.k) .. " to " .. far)
   ok(c.cardH <= 84, "a card with nothing more to say does not grow", c.cardH)
-  c = kinds(600, 420) ok(c.railapp and not c.app, "600 x 420: the rail")
-  local c2 = kinds(900, 430) ok(c2.railapp and c2.railapp > c.railapp, "wider: the rail says the names, more of them", c2.railapp)
+  c = kinds(879, 411) ok(c.app == 24 and not c.railapp and not c.moreapps, "879 x 411: every icon with its name", tostring(c.app))
+  c = kinds(600, 420) ok(c.app == 24, "600 x 420: the same", tostring(c.app))
+  -- crowded: the rail, with the names even at the smallest
+  v.cards = {} for i = 1, 6 do v.cards[i] = { p = 5, lines = 0, btn = true } end
+  for _, z in ipairs({ { 420, 294 }, { 600, 380 } }) do
+    local names, icons = 0, 0
+    for _, b in ipairs((T.DeckLayout(v, z[1], z[2]))) do if b.kind == "railapp" then icons = icons + 1 if b.wide then names = names + 1 end end end
+    ok(icons > 3 and names == icons, "crowded: the rail says the names at " .. z[1], names .. "/" .. icons)
+  end
+  v.cards = { { p = 4, lines = 0, btn = true } }
   ok((kinds(260, 462)).app >= 6, "tall: the icons")
 end
 -- NOTHING IS OUT OF REACH (22 Nov: the accessibility switches did not fit, and nothing led to them): every row, step and
