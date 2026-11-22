@@ -20,6 +20,9 @@ local VIEWS = {
   bosses = { kind = "page", boxes = 3, tabs = 2, rows = 21, keys = 2, big = true, hero = true, say = true, strip = true, apps = 12 },
   sounds = { kind = "page", find = true, boxes = 2, tabs = 3, rows = 60, keys = 2, big = true, apps = 12 },
   long = { kind = "page", say = true, sayN = 130, rows = 30, keys = 2, big = true, apps = 12, titleN = 14, kickN = 18, lens = function(i) return i % 3 == 0 and 60 or 8, 40 end },
+  tour = { kind = "steps", steps = 2, textLines = 3, note = true, titleN = 9, kickN = 15, lens = function() return 95, 8 end },
+  huge = { kind = "page", say = true, rows = 9, keys = 2, apps = 12, lens = function(i) return 400, 40 end },
+  subs = { kind = "page", say = true, rows = 30, boxes = 4, tabs = 4, keys = 2, apps = 12, lens = function(i) return 8, 40, i % 4 > 0 or nil end },
   longSteps = { kind = "steps", steps = 9, textLines = 2, titleN = 30, kickN = 18, lens = function(i) return i % 2 == 0 and 70 or 8, 40 end },
   outLong = { kind = "page", win = true, rows = 12, titleN = 14, kickN = 18, lens = function() return 70, 0 end },
   many = { kind = "page", boxes = 8, tabs = 4, rows = 12, keys = 3, big = true, apps = 12 },
@@ -76,7 +79,7 @@ for name, v in pairs(VIEWS) do
         if b.kind == "title" then heads = heads + 1 end
         -- EASY TO HIT (Arn, 22 Nov): 22 high and 24 wide at least, before the deck's own 1.25
         if CLICKS[b.kind] then ok(b.w >= 20 and b.h >= 22, "easy to hit: " .. b.kind, where .. " " .. b.w .. "x" .. b.h) end
-        if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and (b.h == L.ROW or b.two and b.h == L.ROW2), "a row can be read", where .. " " .. b.w) end
+        if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and (b.h == L.ROW or b.two and b.lines <= L.ROW_LINES and b.h == L.ROW + (b.lines - 1) * L.LINE2), "a row can be read", where .. " " .. b.w) end
         if b.kind == "app" or b.kind == "railapp" then ok(b.w >= (b.bare and 34 or 44) and b.h >= (b.bare and 34 or b.wide and 32 or 46), "an app can be clicked", where .. " " .. b.w) end
         if b.kind == "key" or b.kind == "tab" then ok(b.w >= 40, "a key can be clicked: " .. b.kind, where .. " " .. b.w) end
         if b.kind == "box" then ok(b.w >= 40, "a number box can be read", where .. " " .. b.w) end

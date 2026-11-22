@@ -504,6 +504,31 @@ do
   ok(find("say").a.wrap and find("say").h == 2 * T.DECK_L.SAY, "the line under a list: as many lines as it says", find("say").h)
   ok(find("box").a.text == "0", "nothing is 0, not -0", find("box").a.text)
   ok(find("row").a.wrap and find("row").h == T.DECK_L.ROW2 and find("row", 2).h == T.DECK_L.ROW and not find("row", 2).a.wrap, "a long row: two lines")
+  -- a row with a line of its own under its name: two high, the name in its own ink and never wrapped, the picture bigger
+  do
+    local keep = D.defs["BiSLong:p"].page.rows
+    D.defs["BiSLong:p"].page.rows = function() return { { pic = 5, text = "Relentless Chain", sub = "level 46, waist", right = "DMg", tint = "epic" }, { mark = "-", text = "plain" } } end
+    D.Paint()
+    local r, r2 = find("row"), find("row", 2)
+    ok(r.h == T.DECK_L.ROW2 and r2.h == T.DECK_L.ROW and r.a.text == "Relentless Chain" and r.c.text == "level 46, waist" and r.b.text == "DMg", "its line, and what stands at its right", r.h)
+    ok(not r.a.wrap and r.a.tone == "epic" and r.pic.w == 28 and r2.c.text == "-" and r2.a.tone == "ink", "in its own ink, the next row as ever", r.pic.w)
+    D.defs["BiSLong:p"].page.rows = keep
+    D.Paint()
+    ok(find("row").a.wrap and find("row").a.tone == "ink", "and the piece is a long row again")
+  end
+  -- a first-time page wide: its list as high as its words, the word they all share not said at every one
+  do
+    D.Register{ owner = "BiSTour", key = "p", name = "Tour", page = { rows = function() return { { text = "x" } } end,
+      steps = function() return { { phase = "HELLO", text = ("word "):rep(19) }, { phase = "HELLO", text = "short" } } end } }
+    local W0, H0, S0 = D.W, D.H, D.shape
+    D.W, D.H, D.shape, D.page = 443, 314, "landscape", "BiSTour:p"
+    D.Paint()
+    local a, b = find("step"), find("step", 2)
+    ok(a and b and a.h >= T.DECK_L.ROW + 3 * T.DECK_L.LINE2 and b.h == T.DECK_L.ROW and a.b.text == "" and a.a.wrap, "as high as its words", a and a.h)
+    ok(a.most == nil or a.most >= 4, "and no more lines than it is high", a.most)
+    D.W, D.H, D.shape, D.page = W0, H0, S0, "BiSLong:p"
+    D.Paint()
+  end
   local ti = find("title")
   ti.a.GetUnboundedStringWidth = function(self) return #self.text * self.size * 0.5 end
   D.Paint()

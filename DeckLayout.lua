@@ -39,7 +39,7 @@ local L = {
   LINE = 18, NOTE = 15, PROG = 5,
   FOOT = 24, RAIL = 60, OUT = 32,
   RAIL_WIDE = 132, RAIL_WIDE_H = 34, RAIL_NAMES = 380, RAIL_PAGE = 640,   -- the rail says the names from this width on (home; beside a page)
-  ROW2 = 38, LETTER = 6, TITLE_LETTER = 9.2, KICK_LETTER = 7,      -- a row of two lines; how wide a letter is (a row's, the title's, the kicker's)
+  ROW2 = 38, LINE2 = 14, ROW_LINES = 5, LETTER = 6, TITLE_LETTER = 9.2, KICK_LETTER = 7,      -- a row of two lines; how wide a letter is (a row's, the title's, the kicker's)
   SEARCH_H = 340,                                -- home has its search line from this height on
   GRID_ROWS = 2,                                 -- a wide home is a home screen (icons with names) when this many rows of them fit under its cards
   -- the icons are the largest of these with which ALL of them fit; the last one is a quarter: the picture alone, its name on hover
@@ -255,14 +255,21 @@ end
 
 --- Rows filling a band from the `skip`th on (the wheel, the pad's triggers): never past the end, so the last row is always
 --- reachable and the band is never half empty. Answers how many; a row knows how many there are over and under what shows.
--- A ROW WHOSE WORDS DO NOT FIT IS TWO LINES HIGH (Arn, 22 Nov: "dont like how stuff is cutoff"): `lens(i)` = how many letters it
--- says, and how much of its width its right side takes (nil = not asked, every row is one line).
+-- A ROW IS AS MANY LINES HIGH AS ITS WORDS (Arn, 22 Nov: "dont like how stuff is cutoff"; two at first, and a first-time page's five
+-- lines stood over the next row: now up to ROW_LINES, and never more than its band holds): `lens(i)` = how many letters it
+-- says, and how much of its width its right side takes (nil = not asked, every row is one line); a third answer = it has a line of
+-- its own under its name, so it is always two.
 local function rowList(out, kind, n, x, y, w, h, first, skip, lens)
-  local function high(i)
-    if not lens then return L.ROW end
-    local letters, right = lens(i)
-    return (letters or 0) * L.LETTER > w - 32 - (right or 0) and L.ROW2 or L.ROW
+  local most = max(1, min(L.ROW_LINES, floor((h - L.ROW) / L.LINE2) + 1))
+  local function lines(i)
+    if not lens then return 1 end
+    local letters, right, under = lens(i)
+    if under then return min(2, most) end
+    local room, long = max(40, w - 32 - (right or 0)), (letters or 0) * L.LETTER
+    if long <= room then return 1 end
+    return max(1, min(most, ceil(long * 1.1 / room)))            -- (a tenth more: words break where words end)
   end
+  local function high(i) return L.ROW + (lines(i) - 1) * L.LINE2 end
   local function lies(a) local k, used = 0, 0 while a + k <= n and used + high(a + k) <= h do used = used + high(a + k) + 2 k = k + 1 end return k end
   -- never past the end: the last page starts as early as it can
   local last, used = n + 1, 0
@@ -272,7 +279,7 @@ local function rowList(out, kind, n, x, y, w, h, first, skip, lens)
   local at = y
   for i = 1, show do
     local hh = high(skip + i)
-    out[#out + 1] = { kind = kind, i = (first or 0) + skip + i, x = x, y = at, w = w, h = hh, two = hh > L.ROW or nil, over = skip, under_ = n - show - skip }
+    out[#out + 1] = { kind = kind, i = (first or 0) + skip + i, x = x, y = at, w = w, h = hh, two = hh > L.ROW or nil, lines = lines(skip + i), over = skip, under_ = n - show - skip }
     at = at + hh + 2
   end
   return show

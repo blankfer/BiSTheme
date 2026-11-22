@@ -1007,14 +1007,20 @@ function PAINT.row(w, o, m)
     if w.pic.art ~= r.pic then w.pic.art = r.pic w.pic:SetTexture(r.pic) end
     w.pic:ClearAllPoints()
     w.pic:SetPoint("LEFT", w, "LEFT", 3, 0)
-    w.pic:SetSize(18, 18)
+    w.pic:SetSize(w.sub and 28 or 18, w.sub and 28 or 18)
     if w.pic.SetDesaturated then w.pic:SetDesaturated(r.done and true or false) end
     w.pic:SetAlpha(r.done and 0.55 or 1)
     w.pic:Show()
   end
-  say(w.c, r.pic and "" or r.mark or "", 11, "dim")
-  say(w.a, r.text or "", 13, r.done and "dim" or "ink")
+  local ink = r.done and "dim" or r.tint or "ink"           -- (tint: an item's quality, always said in words too)
   say(w.b, moved and "" or r.right or "", 11, r.ink or "ink2", "RIGHT")
+  if w.sub then                                             -- its name, and a line of its own under it
+    say(w.c, r.sub, 11, "ink2")
+    fit(w.a, r.text or "", { 13, 12, 11 }, ink, nil, o.w - (r.pic and 36 or 24) - (w.chip or 0) - (wide(w.b) or 0) - 18)
+  else
+    say(w.c, r.pic and "" or r.mark or "", 11, "dim")
+    say(w.a, r.text or "", 13, ink)
+  end
   w.act = press(m.def, r.act)
   w.tip = r.tip
   if D.IsSecure(r.act) then w.sec, w.secDef = r.act, m.def end
@@ -1113,7 +1119,7 @@ function PAINT.step(w, o, m)
   local sk = m.def.skipped[o.i]
   say(w.c, s.isDone and "v" or sk and "-" or tostring(o.i), 11, s.isDone and "good" or "dim")
   say(w.a, tostring(s.text or ""), 13, (s.isDone or sk) and "dim" or "ink")
-  say(w.b, tostring(s.phase or ""), 10, "dim", "RIGHT")
+  say(w.b, m.onePhase and "" or tostring(s.phase or ""), 10, "dim", "RIGHT")      -- (every step the same: said once, on the step's own page)
   w.lit = m.cur == o.i
   w.act = function() m.def.stepAt, m.def.stepHeld = o.i, true D.Dirty(true) end
 end
@@ -1185,8 +1191,15 @@ local function words(w, o)
   elseif o.kind == "railapp" then
     w.a:SetPoint("CENTER", w, "CENTER", 0, 0) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -4, -3) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 0)
   elseif o.kind == "row" or o.kind == "step" then
-    w.c:SetPoint("LEFT", w, "LEFT", 7, 0) w.b:SetPoint("RIGHT", w, "RIGHT", w.keys and -58 or w.chip and -(w.chip + 5) or -6, 0)
-    w.a:SetPoint("LEFT", w, "LEFT", 24, 0) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
+    w.b:SetPoint("RIGHT", w, "RIGHT", w.keys and -58 or w.chip and -(w.chip + 5) or -6, 0)
+    if w.sub then
+      local x = w.pic and w.pic:IsShown() and 36 or 24
+      w.a:SetPoint("TOPLEFT", w, "TOPLEFT", x, -4) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
+      w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", x, 4) w.c:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
+    else
+      w.c:SetPoint("LEFT", w, "LEFT", 7, 0)
+      w.a:SetPoint("LEFT", w, "LEFT", 24, 0) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
+    end
   elseif o.kind == "text" or o.kind == "steptext" or o.kind == "say" then
     w.a:SetJustifyV("TOP")
     w.a:SetPoint("TOPLEFT", w, "TOPLEFT", o.kind == "text" and 8 or 0, o.kind == "text" and -5 or 0) w.a:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", o.kind == "text" and -8 or 0, 0)
@@ -1472,12 +1485,14 @@ function D.Paint()
   v.sayN = #tostring(m.say or "")
   v.titleN, v.kickN = #tostring(m.title or ""), #tostring(m.kicker or "")
   if m.steps and v.kind == "steps" then
-    v.lens = function(i) local s = m.steps[i] return #tostring(s and s.text or ""), #tostring(s and s.phase or "") * 5.6 + 8 end
+    m.onePhase = true
+    for _, s in ipairs(m.steps) do if s.phase ~= m.steps[1].phase then m.onePhase = nil end end
+    v.lens = function(i) local s = m.steps[i] return #tostring(s and s.text or ""), m.onePhase and 8 or #tostring(s and s.phase or "") * 5.6 + 8 end
   elseif m.rows then
     v.lens = function(i)
       local x = m.rows[i] or {}
       local verb, moved = D.Verb(x)
-      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or verb and math.min(90, #verb * 6.4 + 18) or 0) + (moved and 0 or #tostring(x.right or "") * 6) + 8
+      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or verb and math.min(90, #verb * 6.4 + 18) or 0) + (moved and 0 or #tostring(x.right or "") * 6) + 8, x.sub and true or nil
     end
   end
   D.paints = (D.paints or 0) + 1
@@ -1495,7 +1510,10 @@ function D.Paint()
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
-    wrap(w.a, (WRAPS[o.kind] or o.two) and true or false)
+    w.sub = o.kind == "row" and o.two and m.rows[o.i] and m.rows[o.i].sub or nil
+    wrap(w.a, (WRAPS[o.kind] or o.two and not w.sub) and true or false)
+    local most = o.lines or 0                                -- (never over the row under it)
+    if w.a.SetMaxLines and w.most ~= most then w.most = most pcall(w.a.SetMaxLines, w.a, most) w.a.said = nil end
     if w.pic then w.pic:Hide() end
     if w.v then w.v:Hide() w.vb:Hide() end
     w.chip = nil
