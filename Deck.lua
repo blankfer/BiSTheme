@@ -234,6 +234,8 @@ D.SWITCHES = {
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
   { "EVERYWHERE", { { "code", "Faint code line" } } },
+  -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
+  { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
 }
 
 --- The data of the open page, asked once a paint.
@@ -307,7 +309,7 @@ local CLICK = { close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, ap
 local LOOK = {                                            -- kind -> ground colour, alpha
   card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 },
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 },
-  hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, home = { "dim", 0.6 }, strip = { "line", 1 },
+  hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
   cardbtn = { "sunken", 1 }, grip = { "line", 0 }, app = { "line", 0 }, railapp = { "line", 0 },
 }
 
@@ -338,6 +340,7 @@ local function piece(parent)
   w.a, w.b, w.c = text(w, 13), text(w, 12), text(w, 10, "dim")
   w:SetScript("OnEnter", function(self)
     if self.act then self.wash:Show() end
+    D.Speak(self)
     if self.tip and GameTooltip then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetText(self.tip)
@@ -352,6 +355,7 @@ end
 local function say(fs, words, size, colour, justify)
   fs.hit = true
   colour, justify = colour or "ink", justify or "LEFT"
+  if D.strong and (colour == "dim" or colour == "ink2") then colour = "ink" end
   if fs.px ~= size then fs.px = size fs:SetFont(D.FONT, size, "") end
   if fs.tone ~= colour then
     fs.tone = colour
@@ -361,6 +365,22 @@ local function say(fs, words, size, colour, justify)
   if fs.just ~= justify then fs.just = justify fs:SetJustifyH(justify) end
   words = plain(words) ~= nil and tostring(words) or ""
   if fs.said ~= words then fs.said = words fs:SetText(words) end
+end
+
+--- Read aloud what the mouse or the pad is on (the PC's own voice; a switch, off until asked for; never in a fight).
+function D.Speak(w)
+  if D.fight or not (D.Store().easy or {}).speak then return false end
+  if not (C_VoiceChat and C_VoiceChat.SpeakText) then return false end
+  local out = {}
+  for _, fs in ipairs({ w.c, w.a, w.b }) do
+    local s = fs.said
+    if type(s) == "string" and s ~= "" and #s > 1 then out[#out + 1] = s end
+  end
+  if #out == 0 then return false end
+  local line = table.concat(out, ", ")
+  if line == D.spoken and D.spokenAt and GetTime and GetTime() - D.spokenAt < 2 then return false end
+  D.spoken, D.spokenAt = line, GetTime and GetTime() or nil
+  return (pcall(C_VoiceChat.SpeakText, 0, line, 0, 100))
 end
 
 --- A button an addon handed in: what a click does, and whether it may (a secure one waits for the overlay).
@@ -379,15 +399,26 @@ function PAINT.close(w) say(w.a, "x", 12, "ink2", "CENTER") w.act = function() D
 function PAINT.shape(w) say(w.a, T.DeckShape(D.W, D.H) == "portrait" and "[ ]" or "|", 11, "ink2", "CENTER") w.act = function() D.Flip() end w.tip = "Tall / wide" end
 function PAINT.gear(w) say(w.a, "*", 14, "ink2", "CENTER") w.act = function() D.page = (D.page == "switches") and "home" or "switches" D.Dirty(true) end w.tip = "Switches and size" end
 function PAINT.back(w) say(w.a, "<", 15, "accent", "CENTER") w.act = function() D.page = "home" D.Dirty(true) end end
-function PAINT.home(w) w.act = function() D.page = "home" D.Dirty(true) end end
+--- A thin drawn bar on a piece whose click area is bigger than it looks (the home bar, the corner, the progress).
+local function stripe(w, key, point, x, y, wide, high, colour, a)
+  local t = w[key]
+  if not t then t = w:CreateTexture(nil, "OVERLAY") w[key] = t end
+  t:ClearAllPoints()
+  t:SetPoint(point, w, point, x, y)
+  t:SetSize(wide, high)
+  local r, g, b = rgb(colour)
+  t:SetColorTexture(r, g, b, a or 1)
+  t:Show()
+end
+function PAINT.home(w, o) stripe(w, "fill", "CENTER", 0, 0, o.w, 4, "dim", 0.6) w.act = function() D.page = "home" D.Dirty(true) end w.tip = "Home" end
 function PAINT.title(w, o, m) say(w.a, m.title or "", 20, "ink") end
 function PAINT.kicker(w, o, m) say(w.a, (m.kicker or ""):upper(), 11, "accent", "RIGHT") end
 function PAINT.code(w) say(w.a, "deck " .. MINOR .. " " .. (D.profile or "?"):sub(1, 2):lower() .. " " .. math.floor(D.W) .. "x" .. math.floor(D.H), 9, "dim", "RIGHT") end
-function PAINT.size(w) say(w.a, "", 9) w.bg:SetColorTexture(rgb("accent")) end
+function PAINT.size(w) stripe(w, "fill", "BOTTOMRIGHT", -2, 2, 14, 3, "accent") stripe(w, "fill2", "BOTTOMRIGHT", -2, 2, 3, 14, "accent") end
 function PAINT.card(w, o, m)
   local c = m.cards[o.i]
   local l = c and c.lines or {}
-  say(w.c, l[1] or "", 11, "accent")
+  say(w.c, (l.hot and "! " or "") .. (l[1] or ""), 11, "accent")        -- (never by colour alone: the gold bar and a mark)
   say(w.a, l[3] or "", 16, "ink")
   say(w.b, l[4] or "", 15, l[5] or "ink2", "RIGHT")
   w.hot = l.hot
@@ -397,7 +428,7 @@ function PAINT.app(w, o, m)
   local d = m.apps[o.i]
   if not d then return end
   say(w.a, d.icon or (d.name or "?"):sub(1, 2), 15, "ink", "CENTER")
-  say(w.c, o.kind == "app" and (d.name or "") or "", 10, "ink2", "CENTER")
+  say(w.c, o.kind == "app" and (d.name or "") or "", 11, "ink2", "CENTER")
   local n = d.badge and D.Call(d, "badge", d.badge)
   say(w.b, (type(n) == "number" and n > 0) and tostring(n) or "", 11, "gold", "RIGHT")
   w.act = function() D.Open(d.id) end
@@ -408,13 +439,13 @@ function PAINT.dock(w, o, m)
   local d = m.dock[o.i]
   if not d then return end
   local hot = D.Call(d, "dock", d.dock.hot)
-  say(w.a, d.dock.word or "", 11, hot and "gold" or "ink2", "CENTER")
+  say(w.a, (hot and "! " or "") .. (d.dock.word or ""), 11, hot and "gold" or "ink2", "CENTER")
   w.act = press(d, d.dock)
 end
 function PAINT.box(w, o, m)
   local b = m.boxes[o.i] or {}
-  say(w.c, b[1] or "", 9, "dim")
-  say(w.a, tostring(b[2] or ""), 16, b[3] or "ink")
+  say(w.c, b[1] or "", 11, "dim")
+  say(w.a, tostring(b[2] or ""), 17, b[3] or "ink")
 end
 function PAINT.tab(w, o, m)
   local onTab = m.tab == o.i
@@ -461,11 +492,7 @@ end
 function PAINT.progress(w, o, m)
   local n = 0
   for i, s in ipairs(m.steps) do if s.isDone or m.def.skipped[i] then n = n + 1 end end
-  w.fill = w.fill or w:CreateTexture(nil, "OVERLAY")
-  w.fill:ClearAllPoints()
-  w.fill:SetPoint("TOPLEFT", w, "TOPLEFT", 0, 0)
-  w.fill:SetSize(math.max(1, o.w * n / math.max(1, #m.steps)), o.h)
-  w.fill:SetColorTexture(rgb("good"))
+  stripe(w, "fill", "TOPLEFT", 0, 0, math.max(1, o.w * n / math.max(1, #m.steps)), o.h, "good")
 end
 function PAINT.preset(w, o)
   say(w.a, ({ "ALL", "LEAN", "BARE" })[o.i], 12, "ink2", "CENTER")
@@ -474,10 +501,20 @@ end
 function PAINT.swhead(w, o) say(w.a, D.SWITCHES[o.group][1], 11, "gold") end
 function PAINT.switch(w, o)
   local s = D.SWITCHES[o.group][2][o.i]
-  local isOn = D.Store().sw[s[1]] ~= false
+  local st0 = D.Store()
+  st0.easy = type(st0.easy) == "table" and st0.easy or {}
+  local isOn
+  if s.easy then isOn = st0.easy[s[1]] == true else isOn = st0.sw[s[1]] ~= false end
   say(w.a, s[2], 13, isOn and "ink" or "dim")
   say(w.b, isOn and "ON" or "OFF", 12, isOn and "good" or "dim", "RIGHT")
-  w.act = function() local st = D.Store() st.sw[s[1]] = not isOn and nil or false D.Save() D.Dirty(true) end
+  w.act = function()
+    local st = D.Store()
+    if s.easy then st.easy[s[1]] = not isOn or nil
+    elseif isOn then st.sw[s[1]] = false
+    else st.sw[s[1]] = nil end
+    D.Save()
+    D.Dirty(true)
+  end
 end
 function PAINT.slider(w, o)
   local st = D.Store()
@@ -594,6 +631,7 @@ function D.Paint()
   local f = D.frame
   if not (f and f:IsShown()) then return 0 end
   local m = D.Model()
+  D.strong = (D.Store().easy or {}).strong and true or false
   local boxes = T.DeckLayout(m.view, D.W, D.H, D.Store().sw)
   local n = 0
   local function put(o)
@@ -601,7 +639,8 @@ function D.Paint()
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
     w.act, w.tip, w.hot, w.lit = nil, nil, nil, nil
-    if w.fill then w.fill:SetSize(0.01, 0.01) end
+    if w.fill then w.fill:Hide() end
+    if w.fill2 then w.fill2:Hide() end
     w.a:SetWordWrap(false)
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)
@@ -673,6 +712,45 @@ function D.Dirty(now)
   if now and D.frame and D.frame:IsShown() then D.Paint() end
 end
 
+-- THE PAD (Arn, 22 Nov; BiSTheme Pad.lua): the deck stands open all evening, so it must not hold the pad all evening - the
+-- character would lose its D-pad. FOCUS is asked for (`/bist deck pad`, a key), shows a tiny frame PadNav holds, and B gives the
+-- pad back (first to home, then out). D-pad = nearest piece, A = its click, LB / RB = the tabs, or back / next on a step run.
+function D.PadItems()
+  local out = {}
+  for _, w in ipairs(D.frame and D.frame.pieces or {}) do if w:IsShown() and w.act then out[#out + 1] = w end end
+  return out
+end
+function D.PadBack() if (D.page or "home") ~= "home" then D.page = "home" D.Dirty(true) else D.Focus(false) end end
+function D.PadTab(by)
+  local def = D.defs[D.page or ""]
+  if not def or not def.page then return false end
+  if def.page.steps then
+    local steps = D.Call(def, "steps", def.page.steps)
+    if type(steps) == "table" and #steps > 0 then D.Step(def, steps, by < 0 and "back" or "next") return true end
+  end
+  local tabs = def.page.tabs and D.Call(def, "tabs", def.page.tabs) or {}
+  if #tabs == 0 then return false end
+  def.tab = ((def.tab or 1) - 1 + by) % #tabs + 1
+  D.Dirty(true)
+  return true
+end
+function D.Focus(want)
+  if want and (D.fight or not T.PadNav or not D.Show()) then return false end
+  local p = D.padFrame
+  if not p and want then
+    p = CreateFrame("Frame", nil, D.frame)
+    p:Hide()
+    p:SetSize(1, 1)
+    p:SetPoint("TOPLEFT", D.frame, "TOPLEFT", 0, 0)
+    T.PadNav(p, { items = D.PadItems, back = D.PadBack, tabs = { prev = function() D.PadTab(-1) end, next = function() D.PadTab(1) end } })
+    D.padFrame = p
+  end
+  if not p then return false end
+  if want then p:Show() else p:Hide() end
+  D.focused = want and true or false
+  return true
+end
+
 function D.Open(id) if D.defs[id] and D.defs[id].page then D.page = id D.Show() D.Dirty(true) end end
 function D.Show()
   if not T.DECK_LOGIN then return false end
@@ -710,7 +788,7 @@ function D.Fight(on)
   D.fight = on and true or false
   local f = D.frame
   if not f then return end
-  if on then D.DragEnd() D.GripEnd() end
+  if on then D.DragEnd() D.GripEnd() D.Focus(false) end
   f:SetAlpha(on and D.FIGHT_ALPHA or 1)
   f:EnableMouse(not on)
   if f:IsShown() then D.Paint() end

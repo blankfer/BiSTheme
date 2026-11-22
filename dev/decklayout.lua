@@ -48,6 +48,7 @@ local function hit(a, b)
 end
 
 local laid = 0
+local CLICKS = { close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1 }
 for name, v in pairs(VIEWS) do
   for _, size in ipairs(SIZES) do
     for _, sw in ipairs(SETS) do
@@ -66,6 +67,8 @@ for name, v in pairs(VIEWS) do
         end
         if b.kind == "big" then big = big + 1 ok(b.w >= 120, "the big button is big", where .. " " .. b.w) end
         if b.kind == "title" then heads = heads + 1 end
+        -- EASY TO HIT (Arn, 22 Nov): 22 high and 24 wide at least, before the deck's own 1.25
+        if CLICKS[b.kind] then ok(b.w >= 20 and b.h >= 22, "easy to hit: " .. b.kind, where .. " " .. b.w .. "x" .. b.h) end
         if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and b.h == L.ROW, "a row can be read", where .. " " .. b.w) end
         if b.kind == "app" or b.kind == "railapp" then ok(b.w >= 46 and b.h >= 46, "an app can be clicked", where .. " " .. b.w) end
         if b.kind == "key" or b.kind == "tab" then ok(b.w >= 40, "a key can be clicked: " .. b.kind, where .. " " .. b.w) end

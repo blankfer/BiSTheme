@@ -192,6 +192,59 @@ fire("PLAYER_REGEN_DISABLED")
 ok(not D.frame.isMoving and D.Store()[D.shape].pos[4] == -33 or D.Store()[D.shape].pos[3] == -33, "a drag ends at the pull, where it stands is kept")
 fire("PLAYER_REGEN_ENABLED")
 
+-- EASIER TO USE (Arn, 22 Nov: accessibility and gamepad)
+do
+  local spoke = {}
+  _G.C_VoiceChat = { SpeakText = function(_, words) spoke[#spoke + 1] = words end }
+  local clock = 10
+  _G.GetTime = function() clock = clock + 5 return clock end
+  D.Place("portrait") D.page = "home" D.Paint()
+  local c1 = find("card", 1)
+  c1.scripts.OnEnter(c1)
+  ok(#spoke == 0, "read aloud is off until asked for")
+  D.Store().easy = { speak = true }
+  c1.scripts.OnEnter(c1)
+  ok(spoke[1] and spoke[1]:find("Next: Razorlash", 1, true) and spoke[1]:find("FOUND", 1, true), "on: what the mouse is on is read aloud", spoke[1])
+  ok(c1.c.text:find("^! "), "a card that needs you says so with a mark, not by colour alone", c1.c.text)
+  ok(find("dock").a.text:find("^! "), "so does a dock button", find("dock").a.text)
+  D.Fight(true) local n0 = #spoke c1.scripts.OnEnter(c1) ok(#spoke == n0, "never in a fight") D.Fight(false)
+  D.Store().easy = { strong = true }
+  D.Paint()
+  ok(find("app", 1).c.tone == "ink", "stronger words: no grey", find("app", 1).c.tone)
+  D.Store().easy = {}
+  D.Paint()
+  -- no words smaller than 11 (13.75 at the deck's own scale), but the faint code
+  local small = 99
+  for _, pg in ipairs({ "home", "switches", "BiSTools:bosses", "BiSTools:run" }) do
+    D.page = pg D.Paint()
+    for _, w in ipairs(D.frame.pieces) do if w.shown and w.kind ~= "code" and w.kind ~= "size" then
+      for _, fs in ipairs({ w.a, w.b, w.c }) do if fs.text and fs.text ~= "" then small = math.min(small, fs.px) end end end end
+  end
+  ok(small >= 10, "no small print", small)
+  -- the pad
+  local nav
+  ok(D.Focus(true) == false, "no pad kit: no focus, no error")
+  T.PadNav = function(frame, spec) nav = spec frame.nav = true return spec end
+  D.page = "home"
+  ok(D.Focus(true) and D.padFrame.shown and nav and #nav.items() > 5, "focus: every piece that does something is reachable", nav and #nav.items())
+  local all = true
+  for _, w in ipairs(nav.items()) do if not w.act then all = false end end
+  ok(all, "and nothing else")
+  D.Open("BiSTools:bosses")
+  nav.tabs.next()
+  ok(D.defs["BiSTools:bosses"].tab == 2, "RB: the next tab")
+  nav.tabs.prev()
+  ok(D.defs["BiSTools:bosses"].tab == 1, "LB: the one before")
+  nav.back()
+  ok(D.page == "home" and D.padFrame.shown, "B: home first")
+  nav.back()
+  ok(not D.padFrame.shown and not D.focused, "B again: the pad is the character's")
+  D.Focus(true)
+  fire("PLAYER_REGEN_DISABLED")
+  ok(not D.padFrame.shown, "a pull gives the pad back at once")
+  fire("PLAYER_REGEN_ENABLED")
+end
+
 -- the profiles
 local function det(f) return D.Detect(f) end
 ok(det{} == "Leveling" and det{ resting = true } == "Town" and det{ dungeon = true, resting = true } == "Dungeon" and det{ raid = true } == "Raid night"

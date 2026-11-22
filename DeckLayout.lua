@@ -31,15 +31,16 @@ local L = {
   PORTRAIT = 9 / 16, LANDSCAPE = 1.43,
   MIN_W = 220, MIN_H = 300, MIN_LW = 420, MIN_LH = 294,
   PAD = 10, GAP = 4,
-  STATUS = 16, TITLE = 24, KICK = 12,            -- the top: clock and x, the name, what it belongs to
-  CARD = 46, CARD_BTN = 24, CARD_MIN_W = 210,    -- a live card; its buttons
+  STATUS = 22, TITLE = 24, KICK = 13,            -- the top: clock and x, the name, what it belongs to
+  CARD = 48, CARD_BTN = 28, CARD_MIN_W = 210,    -- a live card; its buttons
   APP_W = 62, APP_H = 60, DOCK_H = 42, DOCK_W = 46,
-  BOX_H = 32, TAB_H = 20, STRIP = 4, ROW = 22, ROW_MIN_W = 170, SAY = 14,
-  BIG = 32, KEY = 22, LINK = 16,
-  LINE = 17, NOTE = 14, PROG = 4,
-  FOOT = 16, RAIL = 60,
+  BOX_H = 36, TAB_H = 24, STRIP = 4, ROW = 24, ROW_MIN_W = 170, SAY = 14,
+  BIG = 36, KEY = 24, LINK = 24,
+  LINE = 18, NOTE = 15, PROG = 5,
+  FOOT = 24, RAIL = 60,
   HERO_MIN = 70, HERO_SHARE = 0.28,
   MAX_CARDS = 6,
+  HIT = 24,                                      -- nothing to click is smaller than this (Arn, 22 Nov: "easy for people with accessibility")
 }
 T.DECK_L = L
 
@@ -93,12 +94,12 @@ end
 --- The top of every view: clock left, x right; the kicker and the title. Answers the y under it.
 local function head(out, x, y, w, back)
   out[#out + 1] = { kind = "clock", x = x, y = y, w = min(60, w * 0.3), h = L.STATUS }
-  out[#out + 1] = { kind = "grip", x = x + w * 0.3 + 4, y = y, w = w * 0.4 - 8, h = L.STATUS }
-  out[#out + 1] = { kind = "close", x = x + w - 18, y = y, w = 18, h = L.STATUS }
-  out[#out + 1] = { kind = "shape", x = x + w - 40, y = y, w = 18, h = L.STATUS }
+  out[#out + 1] = { kind = "grip", x = x + w * 0.3 + 4, y = y, w = max(20, w * 0.7 - 2 * L.HIT - 3 * L.GAP - 4), h = L.STATUS }
+  out[#out + 1] = { kind = "close", x = x + w - L.HIT, y = y, w = L.HIT, h = L.STATUS }
+  out[#out + 1] = { kind = "shape", x = x + w - 2 * L.HIT - L.GAP, y = y, w = L.HIT, h = L.STATUS }
   y = y + L.STATUS + 2
-  local bw = back and 22 or 0
-  if back then out[#out + 1] = { kind = "back", x = x, y = y, w = 20, h = L.TITLE } end
+  local bw = back and L.HIT + 2 or 0
+  if back then out[#out + 1] = { kind = "back", x = x, y = y, w = L.HIT, h = L.TITLE } end
   local kw = min(110, w * 0.36)
   out[#out + 1] = { kind = "title", x = x + bw, y = y, w = w - bw - kw - 4, h = L.TITLE }
   out[#out + 1] = { kind = "kicker", x = x + w - kw, y = y + (L.TITLE - L.KICK) / 2, w = kw, h = L.KICK }
@@ -108,11 +109,11 @@ end
 --- The foot: the switches key left, the home bar middle, the faint code right. Answers the y of its top.
 local function foot(out, x, bottom, w, sw)
   local y = bottom - L.FOOT
-  out[#out + 1] = { kind = "gear", x = x, y = y, w = 18, h = L.FOOT }
-  local cw = min(120, w * 0.4)
-  out[#out + 1] = { kind = "home", x = x + 22, y = y + (L.FOOT - 4) / 2, w = max(20, w - 22 - cw - 20 - 8), h = 4 }
-  if on(sw, "code") then out[#out + 1] = { kind = "code", x = x + w - cw - 16, y = y, w = cw, h = L.FOOT } end
-  out[#out + 1] = { kind = "size", x = x + w - 12, y = y + L.FOOT - 12, w = 12, h = 12 }
+  out[#out + 1] = { kind = "gear", x = x, y = y, w = L.HIT, h = L.FOOT }
+  local cw = min(120, w * 0.36)
+  out[#out + 1] = { kind = "home", x = x + L.HIT + 4, y = y, w = max(20, w - L.HIT - cw - L.HIT - 12), h = L.FOOT }
+  if on(sw, "code") then out[#out + 1] = { kind = "code", x = x + w - cw - L.HIT - 4, y = y, w = cw, h = L.FOOT } end
+  out[#out + 1] = { kind = "size", x = x + w - L.HIT, y = y, w = L.HIT, h = L.FOOT }
   return y - L.GAP
 end
 
