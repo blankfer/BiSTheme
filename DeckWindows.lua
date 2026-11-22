@@ -79,6 +79,7 @@ local function build(id)
   s.tab = s.def.tab
   f.pieces, f.surf = {}, s
   f:SetFrameStrata(D.STRATA)
+  f:SetFrameLevel(40)                                      -- (in front of the phone)
   f:SetClampedToScreen(true)
   f:SetMovable(true)
   f:EnableMouse(true)
@@ -106,7 +107,7 @@ local function build(id)
     D.WinPaint(id, true)
   end)
   f:Hide()
-  f:SetScript("OnHide", function() if D.winHeld == id then D.WinDrop() end if D.winGrip and D.winGrip.id == id then D.WinGripEnd() end end)
+  f:SetScript("OnHide", function() if D.OverlayClear then D.OverlayClear(s) end if D.winHeld == id then D.WinDrop() end if D.winGrip and D.winGrip.id == id then D.WinGripEnd() end end)
   D.winSurfs[id] = s
   return s
 end
@@ -223,6 +224,7 @@ function D.WinTake(id)
   D.winHeld = id
   s.frame:StartMoving()
   s.frame.moving = true
+  if D.OverlayClear then D.OverlayClear(s) end
   D.WinsWake()
 end
 --- Let go: over the phone = back into it; anywhere else = it stays there.
@@ -241,6 +243,7 @@ function D.WinDrop()
   if not D.fight and deck and deck:IsShown() and deck.IsMouseOver and ask(deck.IsMouseOver, deck) == true then return D.WinClose(id) end
   if s and D.Wins()[id] then
     keep(s)
+    D.WinPaint(id, true)
     D.Phone(function() if D.page == id then D.page = "home" end end)
   end
   D.WinsPaint()

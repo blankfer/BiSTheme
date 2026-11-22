@@ -52,6 +52,15 @@ local function node(kind, parent, template)
   function M:SetThickness(v) if type(v) ~= "number" or v <= 0 then error("SetThickness", 2) end self.thick = v end
   function M:SetStartPoint(p, rel, x, y) if type(p) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then error("SetStartPoint", 2) end self.from = { x, y } end
   function M:SetEndPoint(p, rel, x, y) if type(p) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then error("SetEndPoint", 2) end self.to = { x, y } end
+  if type(template) == "string" and template:find("Secure") then       -- (the client refuses these in a fight)
+    f.attr, f.secure = {}, true
+    for _, k in ipairs({ "Show", "Hide", "SetPoint", "ClearAllPoints", "SetSize", "SetFrameLevel", "SetFrameStrata" }) do
+      local was = M[k]
+      M[k] = function(self, ...) if InCombatLockdown() then error("ADDON_ACTION_BLOCKED " .. k, 2) end return was(self, ...) end
+    end
+    function M:SetAttribute(k, v) if InCombatLockdown() then error("ADDON_ACTION_BLOCKED SetAttribute", 2) end self.attr[k] = v end
+    function M:GetAttribute(k) return self.attr[k] end
+  end
   return setmetatable(f, { __index = function(_, k) return M[k] or (type(k) == "string" and k:match("^%u") and function() end) or nil end })
 end
 _G.CreateFrame = function(kind, _, parent, template) return node(kind, parent, template) end
@@ -1245,6 +1254,80 @@ do
   D.page = "home" D.Paint()
 end
 -- an older copy loading after: refused; a newer one takes over the data and builds its own frame
+-- THE BUTTONS THAT CAST (probed by Arn, 22 Nov): on their own root, laid over the drawn ones by numbers, never in a fight
+do
+  ok(secureMade == 0, "nothing secure so far", secureMade)
+  local drivers = {}
+  _G.RegisterStateDriver = function(fr, what, cond) drivers[fr] = what .. " " .. cond end
+  assert(loadfile("DeckOverlay.lua"))()
+  local go, said, bagOk, used = { word = "CAST", spell = "Windfury Weapon" }, nil, true, 0
+  D.Register{ owner = "BiSCast", key = "a", name = "Cast", order = 0.1,
+    card = { prio = function() return 9 end, lines = function() return { "CAST", "", "x", "" } end, buttons = function() return { { word = "TARGET", macro = "/target party1" } } end },
+    page = { big = function() return go end, keys = function() return { { word = "EAT", item = 1234 }, { word = "PLAIN", fn = function() used = used + 1 end } } end,
+      rows = function() return { { text = "Totem", act = { word = "cast", spell = "Magma Totem" } }, { text = "no" } } end } }
+  local def = D.defs["BiSCast:a"]
+  -- every piece knows where it stands: its own numbers on the deck's corner
+  local function rect(fr, l, t2)
+    fr.GetLeft, fr.GetTop = function() return l end, function() return t2 end
+    fr.GetHeight = function(self) return self.h end
+    fr.IsMouseOver = function() return false end
+  end
+  local function lay(fr) rect(fr, 100, 900) for _, w in ipairs(fr.pieces) do local p = w.pts[1] if p then rect(w, 100 + (p[4] or 0), 900 + (p[5] or 0)) end end end
+  D.Store().sw = {}
+  D.Show() D.Flip("portrait") D.Size(300, 620)
+  D.Open("BiSCast:a")
+  lay(D.frame) D.Paint() lay(D.frame) D.Paint()
+  local list = D.overOf[D.mainSurf]
+  ok(list and #list == 3 and D.overRoot and drivers[D.overRoot] == "visibility [combat] hide; show", "big, a key and a row: three, on a root a fight hides", list and #list)
+  local big
+  for _, b in ipairs(list) do if b.piece.kind == "big" then big = b end end
+  ok(big and big.attr.type1 == "spell" and big.attr.spell1 == "Windfury Weapon" and big.parent == D.overRoot and big.pts[1][2] == UIParent, "it casts; it stands on UIParent, not on the deck")
+  ok(big.w == find("big").w * (find("big").scale or 1) and find("big").a.text == "CAST" and not find("big").tip, "as big as the drawn one, which is not dim")
+  for _, b in ipairs(list) do if b.piece.kind == "key" then ok(b.attr.type1 == "item" and b.attr.item1 == "item:1234", "an item") elseif b.piece.kind == "row" then ok(b.attr.spell1 == "Magma Totem", "a row") end end
+  D.Paint() ok(D.overOf[D.mainSurf][1] == list[1] and D.overN == 3, "painted again: the same ones")
+  -- a click: the last word, then used
+  big.scripts.PreClick(big) big.scripts.PostClick(big)
+  ok(big.attr.type1 == "spell" and D.Mine().live ~= nil, "pressed: it casts")
+  go = { word = "NEXT", spell = "Disenchant", bag = 0, slot = 4, ok = function() return bagOk end }
+  D.Paint() ok(big.attr["target-bag"] == 0 and big.attr["target-slot"] == 4 and big.attr.spell1 == "Disenchant", "a spell on an item in your bags")
+  big.scripts.PreClick(big) ok(big.attr.type1 == "spell", "still that item: it goes")
+  bagOk = false big.scripts.PreClick(big) ok(big.attr.type1 == nil, "the item moved: the click does nothing")
+  D.Paint() ok(big.attr.type1 == "spell", "and the next paint aims again") bagOk = true
+  -- under the mouse: put away, and back
+  D.frame.scripts.OnDragStart(D.frame) ok(D.overN == 0, "the deck is dragged: put away")
+  D.frame.scripts.OnDragStop(D.frame) lay(D.frame) D.Paint() ok(D.overN == 3, "let go: back", D.overN)
+  D.Hide() ok(D.overN == 0, "the phone shut: none") D.Show() lay(D.frame) D.Paint() ok(D.overN == 3, "open: back")
+  -- a fight: nothing secure is touched
+  GAME.fight = true
+  fire("PLAYER_REGEN_DISABLED")
+  local fine, why = pcall(function() D.Paint() D.Hide() D.Show() D.Flip() D.Flip() D.page = "home" D.Paint() end)
+  ok(fine, "a fight: the deck does all it does, no secure button is touched", why)
+  D.Hide()
+  GAME.fight = false
+  fire("PLAYER_REGEN_ENABLED")
+  for _, m2 in ipairs(made) do if m2.scripts.OnEvent and m2.events.PLAYER_REGEN_ENABLED then m2.scripts.OnEvent(m2, "PLAYER_REGEN_ENABLED") end end
+  ok(D.overN == 0, "shut in the fight: nothing left behind after it", D.overN)
+  -- the card's button, pulled out
+  D.Show() D.Flip("portrait") D.page = "home" lay(D.frame) D.Paint() lay(D.frame) D.Paint()
+  local tgt for _, b in ipairs(D.overOf[D.mainSurf] or {}) do if b.attr.macrotext1 == "/target party1" then tgt = b end end
+  ok(tgt and tgt.piece.kind == "cardbtn", "a live card's secure button", D.overN)
+  D.PinOut("BiSCast:a") local pf = D.pinFrames["BiSCast:a"] lay(pf) D.PinPaint("BiSCast:a")
+  ok(D.overOf[pf] and #D.overOf[pf] == 1 and pf.b1.shown, "and on the pulled-out card")
+  D.PinBack("BiSCast:a") ok(not D.overOf[pf], "back: gone from there")
+  -- a window, and what it covers
+  D.Open("BiSCast:a") lay(D.frame) D.Paint() lay(D.frame) D.Paint()
+  D.WinOut("BiSCast:a") local s = D.winSurfs["BiSCast:a"] D.Open("BiSCast:a") lay(s.frame) D.WinPaint("BiSCast:a", true) lay(s.frame) D.WinPaint("BiSCast:a", true)
+  ok(D.overOf[s] and #D.overOf[s] == 3, "a window has its own")
+  lay(D.frame) D.Paint() ok(not D.overOf[D.mainSurf] or #D.overOf[D.mainSurf] < 3, "the phone's under it are put away")
+  D.WinClose("BiSCast:a") ok(not D.overOf[s], "closed: gone")
+  -- the switch
+  D.Store().sw.casts = false D.Paint() ok(D.overN == 0 and find("big").tip:find("Switched off"), "the switch: none, and it says why") D.Store().sw.casts = nil
+  D.OverlayClear(D.mainSurf)
+  D.defs["BiSCast:a"] = nil
+  for _, w in ipairs(D.frame.pieces) do w.GetLeft, w.GetTop = nil, nil end
+  D.frame.GetLeft, D.frame.GetTop = nil, nil
+  D.page = "home" D.Show()
+end
 local old = D.frame
 assert(loadfile("Deck.lua"))()
 ok(T.Deck.frame == old, "the same copy again: refused")

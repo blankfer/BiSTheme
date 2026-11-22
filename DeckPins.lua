@@ -67,7 +67,7 @@ local function build(id)
     w:SetScript("OnDragStop", function() D.PinDrop() end)
   end
   f:Hide()
-  f:SetScript("OnHide", function(self) if D.pinHeld == self.id then D.PinDrop() end end)   -- (after the first Hide: it is no drag's end)
+  f:SetScript("OnHide", function(self) if D.OverlayClear then D.OverlayClear(self) end if D.pinHeld == self.id then D.PinDrop() end end)   -- (after the first Hide: it is no drag's end)
   D.pinFrames[id] = f
   return f
 end
@@ -103,14 +103,14 @@ function D.PinPaint(id)
   local say, rgb = K.say, K.rgb
   f.bg:SetColorTexture(rgb("card"))
   local bs = {}
-  for _, b in ipairs(D.Call(def, "buttons", def.card.buttons) or {}) do if type(b) == "table" and type(b.fn) == "function" and #bs < 3 then bs[#bs + 1] = b end end
+  for _, b in ipairs(D.Call(def, "buttons", def.card.buttons) or {}) do if type(b) == "table" and (type(b.fn) == "function" or D.IsSecure(b) and D.OverlayOn and D.OverlayOn()) and #bs < 3 then bs[#bs + 1] = b end end
   -- (its own lines too - who timed the ride, what comes next: Arn, 22 Nov "these card still want the info of who its syncing from")
   local list = type(l.list) == "table" and l.list or {}
   local nl = math.min(3, #list)
   local btnY = D.PIN_H + nl * D.PIN_LINE + (nl > 0 and 4 or 0)
   local W, H = D.PIN_W, btnY + (#bs > 0 and D.PIN_BTN + 4 or 0)
   f:SetSize(W, H)
-  for _, w in ipairs(f.pieces) do w.act, w.tip = nil, nil w.bg:SetColorTexture(0, 0, 0, 0) end
+  for _, w in ipairs(f.pieces) do w.act, w.tip, w.sec, w.secDef = nil, nil, nil, nil w.bg:SetColorTexture(0, 0, 0, 0) end
   local w = f.body
   put(f, w, 0, 0, W, H)
   K.fit(w.c, (l.hot and "! " or "") .. tostring(l[1] or ""), { 11, 10, 9 }, "accent", nil, W - 90)
@@ -154,7 +154,7 @@ function D.PinPaint(id)
   local each = #bs > 0 and (W - 18 - (#bs - 1) * 4) / #bs or 0
   for i = 1, 3 do
     local p = f["b" .. i]
-    if bs[i] then key(p, bs[i].word or "", 9 + (i - 1) * (each + 4), btnY, each, D.PIN_BTN, D.Press(def, bs[i]), bs[i].tip) else p:Hide() end
+    if bs[i] then key(p, bs[i].word or "", 9 + (i - 1) * (each + 4), btnY, each, D.PIN_BTN, D.Press(def, bs[i]), bs[i].tip) if D.IsSecure(bs[i]) then p.sec, p.secDef = bs[i], def end else p:Hide() end
   end
   w:EnableMouse(not D.fight)
   f:EnableMouse(not D.fight)
@@ -163,6 +163,7 @@ function D.PinPaint(id)
     if D.pinHeld ~= id then place(f) end
     f:Show()
   end
+  if D.OverlayPaint then D.OverlayPaint(f, f) end
   return true
 end
 function D.PinsPaint()
@@ -228,6 +229,7 @@ function D.PinTake(id)
   D.pinHeld = id
   f:StartMoving()
   f.moving = true
+  if D.OverlayClear then D.OverlayClear(f) end
   D.PinsWake()
 end
 --- Let go: over the deck = back into it; anywhere else = it stays there.

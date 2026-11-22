@@ -31,7 +31,7 @@
   THE SKIN IS PLAIN. Nothing secure stands on it or hangs from it, so it may resize, flip, dim and hide in a fight - the boss
   phone holds its secure rows itself and freezes at every pull. The macro / item / spell buttons will stand on their own
   root on UIParent, laid over the skin by numbers, hidden by the client in a fight (research: "the one decision that shapes
-  the rest"). Until the probe says so (bisdev plans/deckkit.lua, T.DECK_OVERLAY), such a button is drawn but dim.
+  the rest"; probed by Arn, 22 Nov: DeckOverlay.lua). With the switch "Cast and target buttons" off, such a button is drawn but dim.
 
   WHOEVER LOADS FIRST ONLY REGISTERS. The frame is built at the first Show after PLAYER_LOGIN, by the newest copy (a frame an
   older copy built is retired). Every callback of an addon is pcalled: an error is counted, said once to the error handler
@@ -410,7 +410,7 @@ D.SWITCHES = {
   -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
   { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
   { "THEME", { { "dark", "Dark", theme = true }, { "drive", "Night drive", theme = true }, { "light", "Light", theme = true }, { "contrast", "High contrast", theme = true } } },
-  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" } } },
+  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" }, { "casts", "Cast and target buttons" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
   { "EVERYWHERE", { { "signs", "Signal, WiFi, battery" }, { "code", "Faint code line" } } },
@@ -715,7 +715,7 @@ function PAINT.title(w, o, m)
   fit(w.a, m.title or "", { 20, 17, 14, 12 }, "ink", nil, o.w - 4)
 end
 function PAINT.kicker(w, o, m) fit(w.a, (m.kicker or ""):upper(), { 11, 10, 9 }, "accent", o.left and "LEFT" or "RIGHT", o.w - 4) end
-function PAINT.code(w) say(w.a, "deck " .. MINOR .. " " .. (D.profile or "?"):sub(1, 2):lower() .. " " .. math.floor(D.W) .. "x" .. math.floor(D.H), 9, "dim", "RIGHT") end
+function PAINT.code(w) say(w.a, "deck " .. MINOR .. " " .. (D.profile or "?"):sub(1, 2):lower() .. " " .. math.floor(D.W) .. "x" .. math.floor(D.H) .. ((D.overN or 0) > 0 and " c" .. D.overN or ""), 9, "dim", "RIGHT") end
 function PAINT.size(w) stripe(w, "fill", "BOTTOMRIGHT", -2, 2, 14, 3, "accent") stripe(w, "fill2", "BOTTOMRIGHT", -2, 2, 3, 14, "accent") end
 function PAINT.card(w, o, m)
   local c = m.cards[o.i]
@@ -881,13 +881,16 @@ function PAINT.row(w, o, m)
   say(w.b, r.right or "", 11, r.ink or "ink2", "RIGHT")
   w.act = press(m.def, r.act)
   w.tip = r.tip
+  if D.IsSecure(r.act) then w.sec, w.secDef = r.act, m.def end
   w.keys = (r.less or r.more or r.side) and true or nil
 end
 local function button(w, b, def, size, room)
   local sec = D.IsSecure(b)
-  fit(w.a, b and b.word or "", { size, size - 2, size - 3 }, sec and "dim" or "ink", "CENTER", (room or 999) - 6)
+  local live = sec and D.OverlayOn and D.OverlayOn()       -- (a secure button is laid over it: DeckOverlay.lua)
+  fit(w.a, b and b.word or "", { size, size - 2, size - 3 }, sec and not live and "dim" or "ink", "CENTER", (room or 999) - 6)
   w.act = press(def, b)
-  w.tip = sec and "This button comes with the next step of the deck" or (b and b.tip)
+  w.tip = sec and not live and "Switched off: switches > Cast and target buttons" or (b and b.tip)
+  if sec then w.sec, w.secDef = b, def end
 end
 function PAINT.big(w, o, m) button(w, m.big, m.def, 16, o.w) end
 function PAINT.key(w, o, m) button(w, m.keys[o.i], m.def, 12, o.w) end
@@ -1077,13 +1080,22 @@ function D.Build()
   f:EnableMouse(true)
   f:SetMovable(true)
   f:RegisterForDrag("LeftButton")
-  f:SetScript("OnDragStart", function(self) if not D.fight then self:StartMoving() self.moving = true end end)
+  f:SetScript("OnDragStart", function(self)
+    if D.fight then return end
+    self:StartMoving()
+    self.moving = true
+    if D.OverlayClear then D.OverlayClear(D.mainSurf) end
+  end)
   f:SetScript("OnDragStop", function() D.DragEnd() end)
   f.bg = f:CreateTexture(nil, "BACKGROUND")
   f.bg:SetAllPoints(f)
   if f.EnableMouseWheel then f:EnableMouseWheel(true) end
   f:SetScript("OnMouseWheel", function(_, delta) if not D.fight then D.Scroll(-(delta or 0)) end end)
-  f:SetScript("OnHide", function() D.DragEnd() D.Sleep() end)
+  f:SetScript("OnHide", function()
+    D.DragEnd()
+    D.Sleep()
+    if D.OverlayClear then D.OverlayClear(D.mainSurf) end
+  end)
   -- THE CORNER IS ITS OWN FRAME, NEVER ONE OF THE PIECES (Arn, 22 Nov, the first look: "when i drag to resize i cant let go" -
   -- 2466 wide): a piece is another box after the next paint, hidden or deaf, and the client tells the letting go to the frame
   -- that was pressed. It also never takes a drag (a Button with RegisterForDrag may get OnDragStop in place of OnMouseUp).
@@ -1124,7 +1136,7 @@ function D.KeepPlace()
     st[T.DeckShape(D.W, D.H)] = st[T.DeckShape(D.W, D.H)] or {}
     st[T.DeckShape(D.W, D.H)].pos = { p, plain(rp) or p, x, y }
     D.Save()
-    D.Dirty()
+    D.Dirty(true)
   end
 end
 
@@ -1271,6 +1283,7 @@ function D.RowKeys(put, o, m, f)
     w:SetFrameLevel((f:GetFrameLevel() or 1) + 4)
     say(w.a, r.side.word or "", 11, "accent", "CENTER")
     w.act, w.tip = press(m.def, r.side), r.side.tip
+    if D.IsSecure(r.side) then w.sec, w.secDef = r.side, m.def end
     w:EnableMouse((w.act or w.tip) and not D.fight and true or false)
     return
   end
@@ -1339,7 +1352,7 @@ function D.Paint()
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
     w.act, w.tip, w.hot, w.lit, w.dragId, w.keys, w.aloud = nil, nil, nil, nil, nil, nil, nil
-    w.dragApp, w.surf = nil, D.surf
+    w.dragApp, w.surf, w.sec, w.secDef = nil, D.surf, nil, nil
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
@@ -1404,6 +1417,7 @@ function D.Paint()
   if f.model and f.modelAt ~= D.paints then f.model:Hide() f.modelKey = nil end
   f.corner:SetFrameLevel((f:GetFrameLevel() or 1) + 8)
   f.corner:EnableMouse(not D.fight)
+  if D.OverlayPaint then D.OverlayPaint(D.surf, f) end
   D.dirty = nil
   return n
 end
@@ -1437,7 +1451,7 @@ function D.GripEnd()
   D.grip = nil
   if g.pinned or g.shape ~= D.shape then D.KeepPlace() end
   D.Save()
-  D.Dirty()
+  D.Dirty(true)
 end
 
 --- Something changed: painted at the next beat (`now` = at once), only while shown.
