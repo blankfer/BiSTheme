@@ -45,7 +45,7 @@ local L = {
   -- the icons are the largest of these with which ALL of them fit; the last one is a quarter: the picture, its name very small
   -- (Arn, 22 Nov: "apps maybe 1/4 of their size? its just a button but there is room for a lot more apps there"; "small names on the new small icons")
   APP_SIZES = { { 105, 102, 1.7 }, { 87, 84, 1.4 }, { 74, 72, 1.2 }, { 62, 60, 1 }, { 44, 46, 0.75 }, { 36, 42, 0.6, bare = true } },
-  HERO_MIN = 70, HERO_SHARE = 0.28, NUMBER = 86, NUMBER_MIN = 58, ICON_H = 48,      -- a picture; one huge number; a line of icons with their names
+  HERO_MIN = 70, HERO_SHARE = 0.28, NUMBER = 86, NUMBER_MID = 70, NUMBER_MIN = 58, ICON_H = 44, ICON_ROW = 38,      -- a picture; one huge number; a line of icons with their names
   MAX_CARDS = 6,
   HIT = 24,                                      -- nothing to click is smaller than this (Arn, 22 Nov: "easy for people with accessibility")
 }
@@ -264,12 +264,15 @@ local function rowList(out, kind, n, x, y, w, h, first, skip, lens)
   local function lines(i)
     if not lens then return 1 end
     local letters, right, under = lens(i)
+    if under == "icons" then return 1 end
     if under then return min(2, most) end
     local room, long = max(40, w - 32 - (right or 0)), (letters or 0) * L.LETTER
     if long <= room then return 1 end
     return max(1, min(most, ceil(long * 1.1 / room)))            -- (a tenth more: words break where words end)
   end
-  local function high(i) return L.ROW + (lines(i) - 1) * L.LINE2 end
+  -- (a row that is a line of icons - its words at the left - has its own height)
+  local function icons(i) if not lens then return false end local _, _, under = lens(i) return under == "icons" and h >= L.ICON_ROW end
+  local function high(i) return icons(i) and L.ICON_ROW or L.ROW + (lines(i) - 1) * L.LINE2 end
   local function lies(a) local k, used = 0, 0 while a + k <= n and used + high(a + k) <= h do used = used + high(a + k) + 2 k = k + 1 end return k end
   -- never past the end: the last page starts as early as it can
   local last, used = n + 1, 0
@@ -279,7 +282,7 @@ local function rowList(out, kind, n, x, y, w, h, first, skip, lens)
   local at = y
   for i = 1, show do
     local hh = high(skip + i)
-    out[#out + 1] = { kind = kind, i = (first or 0) + skip + i, x = x, y = at, w = w, h = hh, two = hh > L.ROW or nil, lines = lines(skip + i), over = skip, under_ = n - show - skip }
+    out[#out + 1] = { kind = kind, i = (first or 0) + skip + i, x = x, y = at, w = w, h = hh, two = hh > L.ROW and not icons(skip + i) or nil, icons = icons(skip + i) or nil, lines = lines(skip + i), over = skip, under_ = n - show - skip }
     at = at + hh + 2
   end
   return show
@@ -492,7 +495,10 @@ local function page(out, v, w, h, sw)
   local mids = (nb > 0 and L.BOX_H + L.GAP or 0) + (nt > 0 and L.TAB_H + L.GAP or 0) + (v.find and L.TAB_H + L.GAP or 0) + ((v.strip and on(sw, "strip")) and L.STRIP + L.GAP or 0)
   if hero and v.number then
     local left = c:left()
-    if left >= L.NUMBER_MIN + need then c:top("hero", left >= L.NUMBER + L.GAP + need + mids + #(v.icons or {}) * (L.ICON_H + L.GAP) and L.NUMBER or L.NUMBER_MIN) end
+    if left >= L.NUMBER_MIN + need then
+      local rest = L.GAP + need + mids + #(v.icons or {}) * (L.ICON_H + L.GAP) + (v.iconRows or 0) * (L.ICON_ROW + 2) - (v.iconRows and need or 0)
+      c:top("hero", left >= L.NUMBER + rest and L.NUMBER or left >= L.NUMBER_MID + rest - L.ICON_ROW and L.NUMBER_MID or L.NUMBER_MIN)
+    end
     iconLines(c, v, need + mids)
   elseif hero then
     local room = c:left() - need - mids

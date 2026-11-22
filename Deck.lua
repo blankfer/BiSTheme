@@ -554,10 +554,12 @@ function D.Model()
       if type(m.icons) ~= "table" then m.icons = nil end
       local lines = {}
       for i, l in ipairs(m.icons or {}) do lines[i] = #l end
+      local iconRows = 0
+      for _, r in ipairs(m.rows) do if type(r) == "table" and r.icons then iconRows = iconRows + 1 end end
       if p.tick then D.ticking = true end
       m.say = p.say and D.Call(d, "say", p.say, m.tab) or nil
       m.view = { kind = "page", find = m.find and true or nil, boxes = #m.boxes, tabs = #m.tabs, rows = #m.rows, keys = #m.keys, big = m.big and true or nil,
-        say = m.say and true or nil, hero = m.hero and true or nil, number = type(m.hero) == "table" and m.hero.art == "number" or nil, icons = #lines > 0 and lines or nil, textLines = m.text and math.max(1, math.ceil(#m.text / D.Letters())) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
+        say = m.say and true or nil, hero = m.hero and true or nil, number = type(m.hero) == "table" and m.hero.art == "number" or nil, icons = #lines > 0 and lines or nil, iconRows = iconRows > 0 and iconRows or nil, textLines = m.text and math.max(1, math.ceil(#m.text / D.Letters())) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
     end
   end
   return m
@@ -1019,7 +1021,11 @@ function PAINT.row(w, o, m)
   end
   local ink = r.done and "dim" or r.tint or "ink"           -- (tint: an item's quality, always said in words too)
   say(w.b, moved and "" or r.right or "", 11, r.ink or "ink2", "RIGHT")
-  if w.sub then                                             -- its name, and a line of its own under it
+  if w.iconRow then                                         -- its words, small, left of its icons (D.RowKeys puts those)
+    fit(w.a, r.text or "", { 12, 11, 10, 9 }, r.tint or "accent", nil, 62)
+    fit(w.c, r.sub or "", { 10, 9, 8 }, r.ink or "ink2", nil, 62)
+    say(w.b, "", 11)
+  elseif w.sub then                                         -- its name, and a line of its own under it
     say(w.c, r.sub, 11, "ink2")
     fit(w.a, r.text or "", { 13, 12, 11 }, ink, nil, o.w - (r.pic and 36 or 24) - (w.chip or 0) - (wide(w.b) or 0) - 18)
   else
@@ -1117,7 +1123,7 @@ end
 --- A line of icons (page.icons = fn(tab) -> { { icon, ... }, { icon, ... } }, icon = { pic, word = its small name, act = button, lit,
 --- tip }): each a picture with its name under it; a press does its button.
 function PAINT.icon(w, o, m)
-  local b = m.icons[o.line] and m.icons[o.line][o.i] or {}
+  local b = o.b or m.icons[o.line] and m.icons[o.line][o.i] or {}
   if b.pic then
     if not w.pic then
       w.pic = w:CreateTexture(nil, "ARTWORK")
@@ -1126,13 +1132,13 @@ function PAINT.icon(w, o, m)
     if w.pic.art ~= b.pic then w.pic.art = b.pic w.pic:SetTexture(b.pic) end
     w.pic:ClearAllPoints()
     w.pic:SetPoint("TOP", w, "TOP", 0, -3)
-    w.pic:SetSize(o.h - 18, o.h - 18)
+    w.pic:SetSize(o.b and o.h - 13 or o.h - 16, o.b and o.h - 13 or o.h - 16)
     if w.pic.SetDesaturated then w.pic:SetDesaturated(false) end
     w.pic:SetAlpha(b.done and 0.45 or 1)
     w.pic:Show()
   end
   say(w.a, b.pic and "" or "-", 15, "dim", "CENTER")
-  fit(w.c, b.word or "", { 10, 9, 8 }, b.lit and "ink" or "ink2", "CENTER", o.w - 2)
+  fit(w.c, b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.lit and "ink" or "ink2", "CENTER", o.w - 2)
   w.act = press(m.def, b.act)
   w.tip, w.lit = b.tip, b.lit and true or nil
   if D.IsSecure(b.act) then w.sec, w.secDef = b.act, m.def end
@@ -1235,7 +1241,10 @@ local function words(w, o)
     w.a:SetPoint("CENTER", w, "CENTER", 0, 0) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -4, -3) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 0)
   elseif o.kind == "row" or o.kind == "step" then
     w.b:SetPoint("RIGHT", w, "RIGHT", w.keys and -58 or w.chip and -(w.chip + 5) or -6, 0)
-    if w.sub then
+    if w.iconRow then
+      w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 5, -5) w.a:SetPoint("TOPRIGHT", w, "TOPLEFT", 68, -5)
+      w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 5, 5) w.c:SetPoint("BOTTOMRIGHT", w, "BOTTOMLEFT", 68, 5)
+    elseif w.sub then
       local x = w.pic and w.pic:IsShown() and 36 or 24
       w.a:SetPoint("TOPLEFT", w, "TOPLEFT", x, -4) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
       w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", x, 4) w.c:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
@@ -1250,7 +1259,7 @@ local function words(w, o)
     w.a:SetPoint("LEFT", w, "LEFT", o.kind == "stephead" and 0 or 8, 0) w.b:SetPoint("RIGHT", w, "RIGHT", o.kind == "stephead" and 0 or -8, 0)
   elseif o.kind == "icon" then
     w.a:SetPoint("TOP", w, "TOP", 0, -10)
-    w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 0, 3) w.c:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", 0, 3)
+    w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 0, o.b and 1 or 3) w.c:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", 0, o.b and 1 or 3)
   elseif o.kind == "hero" and w.heroArt == "number" then
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 10, -6)
     w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 9, 4)
@@ -1477,6 +1486,15 @@ end
 --- A row's - and + (an option with steps): two keys at its right end, the value left of them.
 function D.RowKeys(put, o, m, f)
   local r = m.rows[o.i]
+  if r and r.icons and o.icons then                         -- a line of icons: each its own piece, its own press
+    local n, x0 = #r.icons, o.x + 70
+    local each = (o.x + o.w - x0 - (n - 1) * 3) / math.max(1, n)
+    for k, b in ipairs(r.icons) do
+      local w = put({ kind = "icon", b = b, x = x0 + (k - 1) * (each + 3), y = o.y, w = each, h = o.h })
+      w:SetFrameLevel((f:GetFrameLevel() or 1) + 4)
+    end
+    return
+  end
   if r and r.side then
     local w = put({ kind = "side", x = o.x + o.w - 50, y = o.y, w = 48, h = o.h })
     w:SetFrameLevel((f:GetFrameLevel() or 1) + 4)
@@ -1542,7 +1560,7 @@ function D.Paint()
     v.lens = function(i)
       local x = m.rows[i] or {}
       local verb, moved = D.Verb(x)
-      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or verb and math.min(90, #verb * 6.4 + 18) or 0) + (moved and 0 or #tostring(x.right or "") * 6) + 8, x.sub and true or nil
+      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or verb and math.min(90, #verb * 6.4 + 18) or 0) + (moved and 0 or #tostring(x.right or "") * 6) + 8, x.icons and "icons" or x.sub and true or nil
     end
   end
   D.paints = (D.paints or 0) + 1
@@ -1560,8 +1578,9 @@ function D.Paint()
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
-    w.sub = o.kind == "row" and o.two and m.rows[o.i] and m.rows[o.i].sub or nil
-    wrap(w.a, (WRAPS[o.kind] or o.two and not w.sub) and true or false)
+    w.iconRow = o.kind == "row" and o.icons or nil
+    w.sub = o.kind == "row" and (o.two or o.icons) and m.rows[o.i] and m.rows[o.i].sub or nil
+    wrap(w.a, (WRAPS[o.kind] or o.two and not w.sub and not w.iconRow) and true or false)
     local most = o.lines or 0                                -- (never over the row under it)
     if w.a.SetMaxLines and w.most ~= most then w.most = most pcall(w.a.SetMaxLines, w.a, most) w.a.said = nil end
     if w.pic then w.pic:Hide() end
