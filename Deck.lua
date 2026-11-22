@@ -353,6 +353,34 @@ local function shownApps()
   for _, x in ipairs(D.Icons()) do if D.Shown(x[1], x[2]) then out[#out + 1] = x[1] end end
   return out
 end
+--- The apps called that: the ones that begin with it first, then the rest, then those that only say it (off ones too). nil = nothing typed.
+function D.Find(words)
+  words = tostring(words or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+  if words == "" then return nil end
+  local a, b, c = {}, {}, {}
+  for _, x in ipairs(D.Icons()) do
+    local d, st = x[1], x[2]
+    if not d.hidden and (not d.guest or D.Shown(d, st)) then
+      local at = tostring(d.name or d.key):lower():find(words, 1, true)
+      local to = at == 1 and a or at and b or tostring(type(d.about) == "string" and d.about or ""):lower():find(words, 1, true) and c
+      if to then to[#to + 1] = d end
+    end
+  end
+  for _, t in ipairs({ b, c }) do for _, d in ipairs(t) do a[#a + 1] = d end end
+  return a
+end
+--- The icons' next page, or the one before (`by` -1 / 1).
+function D.AppPage(by)
+  local room, n = D.appRoom or 0, D.appN or 0
+  if room <= 0 then return false end
+  local pages = math.max(1, math.ceil(n / room))
+  local page = math.max(0, math.min(pages - 1, math.floor((D.appSkip or 0) / room)))
+  local to = math.max(0, math.min(pages - 1, page + by))
+  if to == page then return false end
+  D.appSkip = to * room
+  D.Dirty(true)
+  return true
+end
 --- The cards that have something to say now, the most urgent first (a tie keeps its order).
 function D.Cards()
   local st, out = D.Store(), {}
@@ -410,7 +438,7 @@ D.SWITCHES = {
   -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
   { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
   { "THEME", { { "dark", "Dark", theme = true }, { "drive", "Night drive", theme = true }, { "light", "Light", theme = true }, { "contrast", "High contrast", theme = true } } },
-  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" }, { "casts", "Cast and target buttons" } } },
+  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "search", "Search line" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" }, { "casts", "Cast and target buttons" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
   { "EVERYWHERE", { { "signs", "Signal, WiFi, battery" }, { "code", "Faint code line" } } },
@@ -425,7 +453,11 @@ function D.Model()
     m.cards, m.dock = D.Cards(), dockList()
     for _, c in ipairs(m.cards) do if c.def.card.tick and not c.slot then D.ticking = true end end
     if (D.cardSkip or 0) >= #m.cards then D.cardSkip = nil end
-    m.view = { kind = "home", cards = D.CardSizes(m.cards), apps = #m.apps, dock = #m.dock, appSkip = D.appSkip, cardSkip = D.cardSkip }
+    local found = D.Find(D.appFind)                          -- (typed: what is called that, nothing else in its way)
+    if found then m.apps, m.cards = found, {} end
+    m.find = { hint = "search your apps", get = function() return D.appFind or "" end, set = function(v) D.appFind, D.appSkip = v ~= "" and v or nil, nil end,
+      enter = function() local f = D.Find(D.appFind) if f and f[1] then D.Open(f[1].id) end end }
+    m.view = { kind = "home", find = true, cards = D.CardSizes(m.cards), apps = #m.apps, dock = found and 0 or #m.dock, appSkip = D.appSkip, cardSkip = D.cardSkip }
     m.title, m.kicker = "BiS>", (D.profile or "") .. (D.Store().pin and " - pinned" or "")
   elseif m.page == "switches" then
     local groups = {}
@@ -526,9 +558,9 @@ end
 -- THE SKIN ----------------------------------------------------------------------------------------------------------
 
 local CLICK = { out = 1, close = 1, shape = 1, gear = 1, status = 1, back = 1, home = 1, hero = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
-  link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1, cardout = 1, cardend = 1, less = 1, plus = 1, side = 1, morecards = 1 }
+  link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, appprev = 1, appnext = 1, cardout = 1, cardend = 1, less = 1, plus = 1, side = 1, morecards = 1 }
 local LOOK = {                                            -- kind -> ground colour, alpha
-  card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, out = { "sunken", 0.8 }, row = { "sunken", 0.55 }, find = { "sunken", 1 },
+  card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, out = { "sunken", 0.8 }, appprev = { "sunken", 0.8 }, appnext = { "sunken", 0.8 }, row = { "sunken", 0.55 }, find = { "sunken", 1 },
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
   cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "card", 1 }, railapp = { "card", 1 },
@@ -779,15 +811,21 @@ function PAINT.cardline(w, o)
   say(w.a, o.left or "", 12, "ink2")
   say(w.b, o.right or "", 12, "ink2", "RIGHT")
 end
-function PAINT.moreapps(w, o, m)
-  say(w.a, "MORE", 11, "accent", "CENTER")
-  w.act = function()
-    local at = (D.appSkip or 0) + math.max(1, o.i)
-    D.appSkip = at < #m.apps and at or 0
-    D.Dirty(true)
-  end
-  w.tip = "More icons"
+function PAINT.appprev(w, o, m)
+  D.appRoom, D.appN = o.room, #m.apps
+  local there = o.i > 1
+  say(w.a, "<", 15, there and "accent" or "dim", "CENTER")
+  w.act = there and function() D.AppPage(-1) end or nil
+  w.tip = there and "The icons before" or nil
 end
+function PAINT.appnext(w, o, m)
+  D.appRoom, D.appN = o.room, #m.apps
+  local there = o.i < o.n
+  say(w.a, ">", 15, there and "accent" or "dim", "CENTER")
+  w.act = there and function() D.AppPage(1) end or nil
+  w.tip = there and "More icons" or nil
+end
+function PAINT.appinfo(w, o) say(w.a, o.i .. " / " .. o.n, 12, "ink2", "CENTER") end
 function PAINT.dock(w, o, m)
   local d = m.dock[o.i]
   if not d then return end
@@ -808,6 +846,7 @@ function PAINT.tab(w, o, m)
 end
 --- A search line (page.find = fn(tab) -> { hint, get = fn -> words, set = fn(words), enter = fn(words) }): one EditBox a deck, laid
 --- over its box. Typing paints at the next beat; Enter and Esc let go; a fight takes it away.
+D.homeDef = D.homeDef or { owner = "BiSDeck", key = "home", id = "home", name = "Home" }
 function PAINT.find(w, o, m)
   local f, x = D.frame, m.find
   local e = f.find
@@ -834,7 +873,7 @@ function PAINT.find(w, o, m)
       local go, words = self.x and self.x.enter, self:GetText() or ""
       self:ClearFocus()
       D.On(self.surf, function()
-        if go then D.Call(self.def, "find", go, words) if self.def then D.Used(self.def) end end
+        if go then D.Call(self.def, "find", go, words) if self.def and self.def ~= D.homeDef then D.Used(self.def) end end
         D.Dirty(true)
       end)
     end)
@@ -843,8 +882,8 @@ function PAINT.find(w, o, m)
     e.hint = text(e, 12, "dim")
     e.hint:SetPoint("LEFT", e, "LEFT", 7, 0)
   end
-  e.def, e.x = m.def, x
-  local now = x.get and D.Call(m.def, "find", x.get) or ""
+  e.def, e.x = m.def or D.homeDef, x
+  local now = x.get and D.Call(e.def, "find", x.get) or ""
   now = type(now) == "string" and now or ""
   if (e:GetText() or "") ~= now and not (e.HasFocus and ask(e.HasFocus, e) == true) then
     e.quiet = true
@@ -1347,6 +1386,7 @@ function D.Paint()
   D.strong = (D.Store().easy or {}).strong and true or false
   D.Sky()
   local boxes = T.DeckLayout(m.view, D.W, D.H, D.Store().sw)
+  if D.surf == D.mainSurf then D.appRoom = nil end
   local n = 0
   local function put(o)
     n = n + 1
@@ -1476,7 +1516,7 @@ function D.PadBack() if (D.page or "home") ~= "home" then D.page = "home" D.Dirt
 function D.PadTab(by)
   local m = D.Model()
   local def = m.def
-  if not def then return false end
+  if not def then return m.page == "home" and D.AppPage(by) or false end
   if m.view.kind == "steps" then D.Step(def, m.steps, by < 0 and "back" or "next") return true end
   local tabs = m.tabs or {}
   if #tabs == 0 then return false end
@@ -1508,6 +1548,7 @@ function D.Scroll(by)
   if D.skipAt ~= at then D.skipAt, D.skip = at, 0 end
   local was = D.skip or 0
   D.skip = was + by
+  if (D.page or "home") == "home" and D.surf == D.mainSurf then D.skip = was return D.AppPage(by > 0 and 1 or -1) end        -- (home: the wheel turns the icons' pages)
   local least, most = 0, 0
   local f = D.frame
   if f and f:IsShown() then
@@ -1533,6 +1574,7 @@ function D.Open(id)
   end
   if not (d.page or d.about) then return false end
   D.page = id
+  D.appFind = nil                                          -- (found: home is whole again when you come back)
   D.Show()
   D.Dirty(true)
   return true

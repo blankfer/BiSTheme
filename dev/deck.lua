@@ -322,11 +322,29 @@ do
   local icons = {}
   for _ = 1, 40 do
     for i = 1, count("app") do icons[find("app", i).c.text] = true end
-    if not find("moreapps") then break end
-    click(find("moreapps"))
+    if not (find("appnext") and find("appnext").act) then break end
+    click(find("appnext"))
   end
+  local back = 0
+  while find("appprev") and find("appprev").act and back < 60 do click(find("appprev")) back = back + 1 end
+  ok(back >= 3 and (D.appSkip or 0) == 0 and not find("appprev").act, "and back again by <, to the first page", back)
+  D.frame.scripts.OnMouseWheel(D.frame, -1) ok((D.appSkip or 0) > 0, "the wheel turns a page")
+  D.frame.scripts.OnMouseWheel(D.frame, 1) ok((D.appSkip or 0) == 0, "and back")
+  D.Size(260, 520) D.page = "home" D.Paint()
+  ok(find("find") and D.frame.find.shown and find("appinfo") and find("appinfo").a.text:find("^1 / %d"), "home: the search line on top, the page under the icons", find("appinfo") and find("appinfo").a.text)
+  ok(find("find").pts[1][5] > find("card").pts[1][5], "over the cards")
+  local e = D.frame.find
+  e.text = "p1" e.scripts.OnTextChanged(e, true) D.Paint()
+  local only = true
+  for i = 1, count("app") do if not find("app", i).c.text:lower():find("p1", 1, true) and i <= 6 then only = find("app", i).c.text end end
+  ok(only == true and count("app") >= 6 and find("app").c.text == "P1" and count("card") == 0, "typed: what is called that, no cards in its way", tostring(only))
+  e.text = "zzzz" e.scripts.OnTextChanged(e, true) D.Paint() ok(count("app") == 0, "nothing is called that")
+  e.text = "p3" e.scripts.OnTextChanged(e, true) e.scripts.OnEnterPressed(e)
+  ok(D.page == "BiSMany:p3" and D.appFind == nil, "Enter opens the first", D.page)
+  click(find("back")) ok(D.frame.find.text == "" and count("app") > 1, "home again: whole")
+  D.Size(220, 300)
   local ni = 0 for _ in pairs(icons) do ni = ni + 1 end
-  ok(ni == #shownAppsForTest(), "the smallest deck: every icon by MORE", ni .. " of " .. #shownAppsForTest())
+  ok(ni == #shownAppsForTest(), "the smallest deck: every icon by >", ni .. " of " .. #shownAppsForTest())
   for i = 1, 14 do D.defs["BiSMany:p" .. i] = nil end
   D.sorted = nil D.appSkip = nil
   D.Size(260, 462)
@@ -471,7 +489,7 @@ do
     ok(tabs.big == 2 and tabs.keys == 2 and tabs.text == 2 and tabs.hero == 2 and tabs.say == 2 and tabs.boxes == 2, "every part is told the tab")
     def.tab = 1 D.Paint() ok(e.shown, "and back")
     D.fight = true D.Paint() ok(not e.shown, "a fight: gone") D.fight = false
-    D.page = "home" D.Paint() ok(not e.shown, "home: gone")
+    D.page = "home" D.Paint() ok(e.shown and e.hint.text == "search your apps" and e.text == "", "home: its own")
   end
 end
 -- nothing is cut off: the title a size down when the game says it is too wide, a long row in two lines

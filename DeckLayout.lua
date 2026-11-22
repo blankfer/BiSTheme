@@ -40,6 +40,7 @@ local L = {
   FOOT = 24, RAIL = 60, OUT = 32,
   RAIL_WIDE = 132, RAIL_WIDE_H = 34, RAIL_NAMES = 380, RAIL_PAGE = 640,   -- the rail says the names from this width on (home; beside a page)
   ROW2 = 38, LETTER = 6, TITLE_LETTER = 9.2, KICK_LETTER = 7,      -- a row of two lines; how wide a letter is (a row's, the title's, the kicker's)
+  SEARCH_H = 340,                                -- home has its search line from this height on
   GRID_ROWS = 2,                                 -- a wide home is a home screen (icons with names) when this many rows of them fit under its cards
   APP_K = { 1.7, 1.4, 1.2 },                     -- the icons grow to the largest of these with which all of them still fit
   HERO_MIN = 70, HERO_SHARE = 0.28,
@@ -160,12 +161,18 @@ end
 
 --- The apps as a grid in a band: `per` across; more than fit = pages (`more`).
 -- (more icons than fit: the last place is MORE, and the next press starts where this page ended - none is out of reach)
+-- (more icons than fit: pages, with < and > - Arn, 22 Nov: "instead of more need left or right navigation i have to do a whole rotation
+-- to get back so something")
 local function pageOf(n, room, skip)
-  if n <= room then return 0, n, false end
-  local show = max(1, room - 1)
-  local at = skip or 0
-  if at >= n or at < 0 then at = 0 end
-  return at, min(show, n - at), room > 1
+  local pages = max(1, ceil(n / room))
+  local page = max(0, min(pages - 1, floor((skip or 0) / room)))
+  return page * room, min(room, n - page * room), page + 1, pages
+end
+local function nav(out, x, y, w, page, pages, room)
+  local bw = min(64, max(L.HIT, floor(w * 0.3)))
+  out[#out + 1] = { kind = "appprev", i = page, n = pages, room = room, x = x, y = y, w = bw, h = L.HIT }
+  if w - 2 * bw - 2 * L.GAP >= 30 then out[#out + 1] = { kind = "appinfo", i = page, n = pages, x = x + bw + L.GAP, y = y, w = w - 2 * bw - 2 * L.GAP, h = L.HIT } end
+  out[#out + 1] = { kind = "appnext", i = page, n = pages, room = room, x = x + w - bw, y = y, w = bw, h = L.HIT }
 end
 local function appGrid(out, n, x, y, w, h, skip)
   if n <= 0 or h < L.APP_H then return 0 end
@@ -176,14 +183,28 @@ local function appGrid(out, n, x, y, w, h, skip)
     if rr >= 1 and pp * rr >= n then k, per, rows = kk, pp, rr break end
   end
   local ah = floor(L.APP_H * k)
-  local room = per * rows
-  local at, show, more = pageOf(n, room, skip)
-  local each = (w - (per - 1) * L.GAP) / per
-  for i = 1, show + (more and 1 or 0) do
-    local cx, cy = (i - 1) % per, floor((i - 1) / per)
-    out[#out + 1] = { kind = i > show and "moreapps" or "app", i = i > show and show or at + i, x = x + cx * (each + L.GAP), y = y + cy * (ah + L.GAP), w = each, h = ah, k = k }
+  local side
+  if per * rows < n then
+    local under = floor((h - L.HIT - L.GAP + L.GAP) / (L.APP_H + L.GAP))
+    if under >= 1 then rows = under
+    else                                                     -- (one row and no more room: < and > at its two sides)
+      side = L.HIT + L.GAP
+      x, w = x + side, w - 2 * side
+      per = fit(99, w, L.APP_W)
+    end
   end
-  return ceil((show + (more and 1 or 0)) / per) * (ah + L.GAP)
+  local room = per * rows
+  local at, show, page, pages = pageOf(n, room, skip)
+  local each = (w - (per - 1) * L.GAP) / per
+  for i = 1, show do
+    local cx, cy = (i - 1) % per, floor((i - 1) / per)
+    out[#out + 1] = { kind = "app", i = at + i, x = x + cx * (each + L.GAP), y = y + cy * (ah + L.GAP), w = each, h = ah, k = k }
+  end
+  if side then
+    out[#out + 1] = { kind = "appprev", i = page, n = pages, room = room, x = x - side, y = y, w = L.HIT, h = ah }
+    out[#out + 1] = { kind = "appnext", i = page, n = pages, room = room, x = x + w + L.GAP, y = y, w = L.HIT, h = ah }
+  elseif pages > 1 then nav(out, x, y + rows * (ah + L.GAP), w, page, pages, room) end
+  return ceil(show / per) * (ah + L.GAP)
 end
 
 --- The dock, centred.
@@ -199,10 +220,12 @@ end
 local function rail(out, n, x, y, h, skip, wide)
   local rw, rh = wide and L.RAIL_WIDE or L.RAIL - 8, wide and L.RAIL_WIDE_H or L.RAIL - 8
   local room = max(1, floor((h + L.GAP) / (rh + L.GAP)))
-  local at, show, more = pageOf(n, room, skip)
-  for i = 1, show + (more and 1 or 0) do
-    out[#out + 1] = { kind = i > show and "moreapps" or "railapp", i = i > show and show or at + i, x = x, y = y + (i - 1) * (rh + L.GAP), w = rw, h = rh, wide = wide or nil }
+  if n > room then room = max(1, floor((h - L.HIT) / (rh + L.GAP))) end
+  local at, show, page, pages = pageOf(n, room, skip)
+  for i = 1, show do
+    out[#out + 1] = { kind = "railapp", i = at + i, x = x, y = y + (i - 1) * (rh + L.GAP), w = rw, h = rh, wide = wide or nil }
   end
+  if pages > 1 then nav(out, x, y + room * (rh + L.GAP), rw, page, pages, room) end
   return x + rw + 8
 end
 
@@ -291,6 +314,10 @@ local function home(out, v, w, h, sw)
     dock(out, nDock, x, bottom - L.DOCK_H, W)
     bottom = bottom - L.DOCK_H - L.GAP
   end
+  if v.find and on(sw, "search") and h >= L.SEARCH_H then    -- the search line, over everything
+    out[#out + 1] = { kind = "find", x = x, y = y, w = W, h = L.TAB_H }
+    y = y + L.TAB_H + L.GAP
+  end
   if T.DeckShape(w, h) == "landscape" then
     -- A HOME SCREEN when it is tall enough (cards on top, the icons with their names under them), else cards beside a rail
     -- (Arn, 22 Nov, at 879 wide: "i gotta go this far for the shelf to open on the side to see the names plenty of room")
@@ -331,7 +358,7 @@ local function home(out, v, w, h, sw)
     return
   end
   -- portrait: cards on top, then the icons: they get up to three rows, never less than one
-  local appsNeed = nApps > 0 and (L.APP_H + L.GAP) or 0
+  local appsNeed = nApps > 0 and (L.APP_H + L.GAP) + (nApps > fit(99, W, L.APP_W) and L.HIT + L.GAP or 0) or 0
   local per = fit(99, W, L.APP_W)
   local appRows = nApps > 0 and ceil(nApps / per) or 0
   local room = bottom - y - min(appRows, 3) * (L.APP_H + L.GAP)

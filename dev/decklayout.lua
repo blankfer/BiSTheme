@@ -54,7 +54,7 @@ local function hit(a, b)
 end
 
 local laid = 0
-local CLICKS = { status = 1, morecards = 1, close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1, more = 1, moreapps = 1 }
+local CLICKS = { status = 1, morecards = 1, close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1, more = 1, appprev = 1, appnext = 1 }
 for name, v in pairs(VIEWS) do
   for _, size in ipairs(SIZES) do
     for _, sw in ipairs(SETS) do
@@ -147,10 +147,10 @@ do
   local v = { kind = "home", cards = { { p = 4, lines = 0, btn = true } }, apps = 24, dock = 0 }
   local function kinds(w, h) local c, far, boxes = {}, 0, T.DeckLayout(v, w, h) for _, b in ipairs(boxes) do c[b.kind] = (c[b.kind] or 0) + 1 if b.kind == "app" or b.kind == "railapp" then far = math.max(far, b.y + b.h) c.k, c.hh = b.k, b.h end if b.kind == "card" then c.cardH = b.h end end return c, far end
   local c, far = kinds(637, 636)
-  ok(c.app == 24 and not c.railapp and not c.moreapps, "637 x 636: every icon with its name, no rail", tostring(c.app))
+  ok(c.app == 24 and not c.railapp and not c.appnext, "637 x 636: every icon with its name, no rail", tostring(c.app))
   ok(c.k and c.k > 1 and far > 636 * 0.6, "and they fill it: bigger icons", tostring(c.k) .. " to " .. far)
   ok(c.cardH <= 84, "a card with nothing more to say does not grow", c.cardH)
-  c = kinds(879, 411) ok(c.app == 24 and not c.railapp and not c.moreapps, "879 x 411: every icon with its name", tostring(c.app))
+  c = kinds(879, 411) ok(c.app == 24 and not c.railapp and not c.appnext, "879 x 411: every icon with its name", tostring(c.app))
   c = kinds(600, 420) ok(c.app == 24, "600 x 420: the same", tostring(c.app))
   -- crowded: the rail, with the names even at the smallest
   v.cards = {} for i = 1, 6 do v.cards[i] = { p = 5, lines = 0, btn = true } end
@@ -193,8 +193,8 @@ for _, size in ipairs({ { L.MIN_W, L.MIN_H }, { 300, 533 }, { L.MIN_LW, L.MIN_LH
     local got, at = {}, 0
     for _ = 1, 60 do
       local more
-      for _, b in ipairs((T.DeckLayout({ kind = "home", cards = 5, apps = n2, dock = 5, appSkip = at }, size[1], size[2]))) do
-        if b.kind == "app" or b.kind == "railapp" then got[b.i] = true ok(b.i >= 1 and b.i <= n2, "an icon that is there", b.i) elseif b.kind == "moreapps" then more = b.i end
+      for _, b in ipairs((T.DeckLayout({ kind = "home", find = true, cards = 5, apps = n2, dock = 5, appSkip = at }, size[1], size[2]))) do
+        if b.kind == "app" or b.kind == "railapp" then got[b.i] = true ok(b.i >= 1 and b.i <= n2, "an icon that is there", b.i) elseif b.kind == "appnext" and b.i < b.n then more = b.room end
       end
       if not more then break end
       at = at + more
@@ -202,7 +202,7 @@ for _, size in ipairs({ { L.MIN_W, L.MIN_H }, { 300, 533 }, { L.MIN_LW, L.MIN_LH
     end
     local gone = 0
     for i = 1, n2 do if not got[i] then gone = gone + 1 end end
-    ok(gone == 0, "every icon can be reached by MORE", size[1] .. "x" .. size[2] .. " of " .. n2 .. " missing " .. gone)
+    ok(gone == 0, "every icon can be reached by >", size[1] .. "x" .. size[2] .. " of " .. n2 .. " missing " .. gone)
   end
   local groups, seen, skip = { 2, 12, 4, 9, 6 }, {}, 0
   for _ = 1, 60 do
