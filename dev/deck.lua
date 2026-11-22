@@ -560,6 +560,29 @@ do
   D.defs["BiSHush:c"] = nil
   _G.C_Timer = keepC
 end
+-- what can be pressed looks like it (Arn, 22 Nov: "this is clickable or this is just information"), and boxes in two lines
+do
+  local hits = 0
+  D.Register{ owner = "BiSChip", key = "p", name = "Chip", page = {
+    boxes = function() local o = {} for i = 1, 8 do o[i] = { "BOX " .. i, i } end return o end,
+    rows = function() return { { text = "Frostbrand Weapon", verb = "IMBUE", act = { word = "CAST", spell = "Frostbrand Weapon" } }, { text = "Magma Totem", act = { word = "CAST", spell = "Magma Totem" } },
+      { text = "Procs", right = "5 WF" }, { text = "Open it", right = "12", act = { word = "open", fn = function() hits = hits + 1 end } },
+      { text = "A switch", right = "ON", ink = "good", act = { word = "switch", chip = true, fn = function() end } }, { text = "TRY NEXT", head = true }, { text = "Gone", side = { word = "X", fn = function() end } } } end } }
+  D.W, D.H, D.shape, D.page = 260, 520, "portrait", "BiSChip:p"
+  D.Paint()
+  local function row(i) return find("row", i) end
+  ok(row(1).v.shown and row(1).v.text == "IMBUE" and row(2).v.text == "CAST", "what it does stands on its chip")
+  ok(not (row(3).v and row(3).v.shown) and row(3).b.text == "5 WF" and not row(3).act, "just information: no chip")
+  ok(row(4).v.text == ">" and row(4).b.text == "12", "pressed for more: >, its number beside it")
+  ok(row(5).v.text == "ON" and row(5).b.text == "", "a switch: its value is the chip")
+  ok(row(6).a.col ~= row(1).a.col or row(6).a.size == 11, "a heading")
+  ok(not (row(7).v and row(7).v.shown) and count("side") == 1, "a key of its own: no chip")
+  click(row(4)) ok(hits == 1, "pressed")
+  ok(count("box") == 8 and find("box", 8).a.text == "8" and find("box", 5).pts[1][5] < find("box", 1).pts[1][5], "eight boxes: two lines")
+  D.page = "home" D.Paint() D.page = "BiSTools:bosses" D.Paint()
+  for _, p in ipairs(D.frame.pieces) do if p.shown and p.v and p.v.shown and p.kind ~= "row" then ok(false, "a chip left behind on a " .. p.kind) end end
+  D.page = "home"
+end
 -- every size, every page: it paints
 for _, page in ipairs({ "home", "switches", "BiSTools:bosses", "BiSTools:run", "BiSBroken:bad", "Nobody:here" }) do
   D.page = page
@@ -1343,6 +1366,10 @@ do
   -- a click: the last word, then used
   big.scripts.PreClick(big) big.scripts.PostClick(big)
   ok(big.attr.type1 == "spell" and D.Mine().live ~= nil, "pressed: it casts")
+  local after = 0
+  go = { word = "FIND", macro = "/targetexact Sneed", after = function() after = after + 1 end }
+  D.Paint() big.scripts.PostClick(big, "LeftButton", true) big.scripts.PostClick(big, "LeftButton", false)
+  ok(after == 1, "what comes after it: once a click", after)
   go = { word = "NEXT", spell = "Disenchant", bag = 0, slot = 4, ok = function() return bagOk end }
   D.Paint() ok(big.attr["target-bag"] == 0 and big.attr["target-slot"] == 4 and big.attr.spell1 == "Disenchant", "a spell on an item in your bags")
   big.scripts.PreClick(big) ok(big.attr.type1 == "spell", "still that item: it goes")

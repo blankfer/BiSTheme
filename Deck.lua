@@ -12,7 +12,7 @@
       card = { prio = fn -> number | nil (nil = no card now), lines = fn -> { title, note, value, right, ink, hot = true, list = { { left, right }, ... } (a large card's own lines, three at most) },
                buttons = fn -> { { word, fn }, ... }, profiles = { Dungeon = true } },
       page = { title = fn, kicker = fn, boxes = fn -> { { word, value, ink } }, tabs = fn -> { "BOSSES", "QUESTS" },
-               rows = fn(tab) -> { { text, right, mark | pic = the game's picture, ink, done, act = button, side = button, less, more, tip } },
+               rows = fn(tab) -> { { text, right, mark | pic = the game's picture, ink, done, act = button, verb = the word on its chip, side = button, less, more, tip, head = true (a heading) } },
                big = fn(tab) -> button, keys = fn(tab) -> { button }, find = fn(tab) -> { hint, get, set, enter } (a search line),
                text = fn -> string, say = fn -> string, tick = true (its words change by the second while it is open),
                hero = fn -> { art = "radio", big, small, left, right, frac 0-1, ticks, at (the needle), on, fn } (ours only: the picture on top),
@@ -955,8 +955,50 @@ function PAINT.find(w, o, m)
   e:SetShown(not D.fight)
   f.findAt = D.paints
 end
+--- WHAT CAN BE PRESSED LOOKS LIKE IT (Arn, 22 Nov: "need a way were stuff is distinguished this is clickable or this is just
+--- information"): a row that does something has a ground and a chip at its right with the word of what it does (its `verb`, a secure
+--- button's word, a switch's own value) or ">"; a row that only says something has neither.
+local function chip(w, word, ink, off)
+  if not w.v then
+    w.vb = w:CreateTexture(nil, "BORDER")
+    w.v = text(w, 11)
+  end
+  local px = fit(w.v, word, { 11, 10, 9 }, ink or "accent", "CENTER", 78)
+  local cw = math.max(20, math.min(90, (wide(w.v) or #word * 6.4) + 12))
+  local r, g, b = rgb("accentSoft")
+  w.vb:SetColorTexture(r, g, b, 1)
+  w.vb:ClearAllPoints()
+  w.vb:SetPoint("RIGHT", w, "RIGHT", -3 - (off or 0), 0)
+  w.vb:SetSize(cw, 18)
+  w.v:ClearAllPoints()
+  w.v:SetPoint("CENTER", w.vb, "CENTER", 0, 0)
+  w.vb:Show()
+  w.v:Show()
+  w.chip = cw + 4
+  return px
+end
+--- The word on a row's chip, and whether its right words moved onto it (nil = no chip).
+function D.Verb(r)
+  local a = r.act
+  if not a or r.side or r.less or r.more then return nil end
+  if r.verb then return r.verb end
+  if a.chip and r.right then return r.right, true end
+  if D.IsSecure(a) then return a.word end
+  return ">"
+end
 function PAINT.row(w, o, m)
   local r = m.rows[o.i] or {}
+  local verb, moved = D.Verb(r)
+  if not (r.act or r.side or r.less or r.more) then w.bg:SetColorTexture(0, 0, 0, 0) end
+  if r.head then
+    w.bg:SetColorTexture(0, 0, 0, 0)
+    say(w.c, "", 11)
+    say(w.a, r.text or "", 11, "accent")
+    say(w.b, r.right or "", 11, r.ink or "ink2", "RIGHT")
+    w.tip = r.tip
+    return
+  end
+  if verb then chip(w, verb, moved and r.ink or r.verbInk) end
   if r.pic then
     if not w.pic then
       w.pic = w:CreateTexture(nil, "ARTWORK")
@@ -972,7 +1014,7 @@ function PAINT.row(w, o, m)
   end
   say(w.c, r.pic and "" or r.mark or "", 11, "dim")
   say(w.a, r.text or "", 13, r.done and "dim" or "ink")
-  say(w.b, r.right or "", 11, r.ink or "ink2", "RIGHT")
+  say(w.b, moved and "" or r.right or "", 11, r.ink or "ink2", "RIGHT")
   w.act = press(m.def, r.act)
   w.tip = r.tip
   if D.IsSecure(r.act) then w.sec, w.secDef = r.act, m.def end
@@ -1143,7 +1185,7 @@ local function words(w, o)
   elseif o.kind == "railapp" then
     w.a:SetPoint("CENTER", w, "CENTER", 0, 0) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -4, -3) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 0)
   elseif o.kind == "row" or o.kind == "step" then
-    w.c:SetPoint("LEFT", w, "LEFT", 7, 0) w.b:SetPoint("RIGHT", w, "RIGHT", w.keys and -58 or -6, 0)
+    w.c:SetPoint("LEFT", w, "LEFT", 7, 0) w.b:SetPoint("RIGHT", w, "RIGHT", w.keys and -58 or w.chip and -(w.chip + 5) or -6, 0)
     w.a:SetPoint("LEFT", w, "LEFT", 24, 0) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
   elseif o.kind == "text" or o.kind == "steptext" or o.kind == "say" then
     w.a:SetJustifyV("TOP")
@@ -1434,7 +1476,8 @@ function D.Paint()
   elseif m.rows then
     v.lens = function(i)
       local x = m.rows[i] or {}
-      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or 0) + #tostring(x.right or "") * 6 + 8
+      local verb, moved = D.Verb(x)
+      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or verb and math.min(90, #verb * 6.4 + 18) or 0) + (moved and 0 or #tostring(x.right or "") * 6) + 8
     end
   end
   D.paints = (D.paints or 0) + 1
@@ -1454,6 +1497,8 @@ function D.Paint()
     if w.fill2 then w.fill2:Hide() end
     wrap(w.a, (WRAPS[o.kind] or o.two) and true or false)
     if w.pic then w.pic:Hide() end
+    if w.v then w.v:Hide() w.vb:Hide() end
+    w.chip = nil
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)
     w:SetSize(o.w, o.h)

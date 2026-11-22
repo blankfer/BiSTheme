@@ -86,6 +86,8 @@ local function make(r)
       return
     end
     if self.sec and self.def and self.key and not self.sec.peek then D.Used(self.def) end
+    -- (what the addon does after it, once a click: the way up)
+    if self.sec and self.key and not down and type(self.sec.after) == "function" then D.Call(self.def or D.homeDef, "after", self.sec.after) end
     D.Phone(D.Dirty)
   end)
   b:SetScript("OnEnter", function(self)

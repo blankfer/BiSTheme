@@ -22,6 +22,7 @@ local VIEWS = {
   long = { kind = "page", say = true, sayN = 130, rows = 30, keys = 2, big = true, apps = 12, titleN = 14, kickN = 18, lens = function(i) return i % 3 == 0 and 60 or 8, 40 end },
   longSteps = { kind = "steps", steps = 9, textLines = 2, titleN = 30, kickN = 18, lens = function(i) return i % 2 == 0 and 70 or 8, 40 end },
   outLong = { kind = "page", win = true, rows = 12, titleN = 14, kickN = 18, lens = function() return 70, 0 end },
+  many = { kind = "page", boxes = 8, tabs = 4, rows = 12, keys = 3, big = true, apps = 12 },
   alone = { kind = "page", find = true, boxes = 0, tabs = 2, rows = 0, keys = 0, textLines = 2, apps = 12 },
   short = { kind = "page", boxes = 0, tabs = 0, rows = 2, keys = 0, big = true, apps = 12 },
   text = { kind = "page", boxes = 4, tabs = 0, rows = 0, keys = 3, big = true, textLines = 9, hero = true, apps = 12 },

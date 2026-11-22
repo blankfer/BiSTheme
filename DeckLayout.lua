@@ -93,6 +93,23 @@ local function spread(out, kind, n, x, y, w, h)
   for i = 1, n do out[#out + 1] = { kind = kind, i = i, x = x + (i - 1) * (each + L.GAP), y = y, w = each, h = h } end
 end
 
+--- The number boxes: one line, or two when they do not fit one (`two` = there is room). Answers how high they are.
+local function boxLines(out, n, x, y, w, least, two)
+  local per = 1
+  while per < n and (w - per * 4) / (per + 1) >= least do per = per + 1 end
+  if n <= per or not two then
+    spread(out, "box", min(n, per), x, y, w, L.BOX_H)
+    return L.BOX_H + L.GAP
+  end
+  local a = min(per, ceil(n / 2))
+  local b = min(per, n - a)
+  spread(out, "box", a, x, y, w, L.BOX_H)
+  local at = #out
+  spread(out, "box", b, x, y + L.BOX_H + L.GAP, w, L.BOX_H)
+  for i = at + 1, #out do out[i].i = out[i].i + a end
+  return 2 * (L.BOX_H + L.GAP)
+end
+
 --- How many side-by-side pieces of at least `least` fit in w (never 0).
 local function fit(n, w, least)
   return max(1, min(n, floor((w + L.GAP) / (least + L.GAP))))
@@ -440,10 +457,7 @@ local function page(out, v, w, h, sw)
       if v.find and c:left() >= L.TAB_H then c:top("find", L.TAB_H) end
     end
     if nb > 0 and c:left() >= L.BOX_H then
-      local per = fit(nb, W, 62)
-      local by = c.y0
-      c.y0 = by + L.BOX_H + L.GAP
-      spread(out, "box", min(nb, per), x, by, W, L.BOX_H)
+      c.y0 = c.y0 + boxLines(out, nb, x, c.y0, W, 62, c:left() >= 2 * (L.BOX_H + L.GAP) + L.LINE)
     end
     if (v.textLines or 0) > 0 and c:left() >= L.LINE + 8 then c:top("text", min(v.textLines * L.LINE + 8, c:left() - (hero and L.HERO_MIN or 0) > L.LINE + 8 and c:left() - (hero and L.HERO_MIN or 0) or c:left())) end
     if hero and c:left() >= L.HERO_MIN then c:top("hero", c:left()) end
@@ -461,9 +475,7 @@ local function page(out, v, w, h, sw)
     if room >= L.HERO_MIN then c:top("hero", min(floor(h * L.HERO_SHARE), room - L.GAP)) end
   end
   if nb > 0 and c:left() >= L.BOX_H + need then
-    local by = c.y0
-    c.y0 = by + L.BOX_H + L.GAP
-    spread(out, "box", min(nb, fit(nb, W, 56)), x, by, W, L.BOX_H)
+    c.y0 = c.y0 + boxLines(out, nb, x, c.y0, W, 56, c:left() >= 2 * (L.BOX_H + L.GAP) + need + L.TAB_H)
   end
   if nt > 0 then
     local ty = c.y0
