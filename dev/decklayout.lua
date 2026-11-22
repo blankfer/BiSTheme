@@ -48,7 +48,7 @@ local function hit(a, b)
 end
 
 local laid = 0
-local CLICKS = { close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1 }
+local CLICKS = { close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1, link = 1, step = 1, preset = 1, switch = 1, size = 1, more = 1, moreapps = 1 }
 for name, v in pairs(VIEWS) do
   for _, size in ipairs(SIZES) do
     for _, sw in ipairs(SETS) do
@@ -90,6 +90,50 @@ ok(count(VIEWS.home, 324, 800, "card") >= count(VIEWS.home, 324, 480, "card"), "
 ok(count(VIEWS.homeMany, 900, 630, "card") > count(VIEWS.homeMany, 324, 576, "card") , "landscape: more cards", count(VIEWS.homeMany, 900, 630, "card") .. " " .. count(VIEWS.homeMany, 324, 576, "card"))
 ok(count(VIEWS.bosses, 858, 600, "row") > 0 and count(VIEWS.bosses, 858, 600, "hero") == 1, "landscape: the list and the big picture, side by side")
 ok(count(VIEWS.bosses, 324, 576, "hero") == 1 and count(VIEWS.bosses, 300, 330, "hero") == 0, "portrait: the picture goes first when there is no room")
+-- NOTHING IS OUT OF REACH (22 Nov: the accessibility switches did not fit, and nothing led to them): every row, step and
+-- switch comes up at some scroll, at the smallest size and the everyday one
+for _, size in ipairs({ { L.MIN_W, L.MIN_H }, { 300, 533 }, { L.MIN_LW, L.MIN_LH }, { 600, 420 }, { 560, 900 } }) do
+  for name, v in pairs({ bosses = VIEWS.bosses, full = VIEWS.full, steps = VIEWS.steps }) do
+    local seen, kind, n2 = {}, v.kind == "steps" and "step" or "row", v.kind == "steps" and v.steps or v.rows
+    local any = false
+    for skip = 0, n2 do
+      local view = {} for k, x in pairs(v) do view[k] = x end
+      view.skip = skip
+      for _, b in ipairs((T.DeckLayout(view, size[1], size[2]))) do if b.kind == kind then seen[b.i] = true any = true ok(b.i >= 1 and b.i <= n2, "a row that is there", b.i) end end
+    end
+    local miss = 0
+    for i = 1, n2 do if not seen[i] then miss = miss + 1 end end
+    ok(not any or miss == 0, "every row can be reached: " .. name, size[1] .. "x" .. size[2] .. " missing " .. miss)
+  end
+  for _, n2 in ipairs({ 1, 12, 40 }) do
+    local got, at = {}, 0
+    for _ = 1, 60 do
+      local more
+      for _, b in ipairs((T.DeckLayout({ kind = "home", cards = 5, apps = n2, dock = 5, appSkip = at }, size[1], size[2]))) do
+        if b.kind == "app" or b.kind == "railapp" then got[b.i] = true ok(b.i >= 1 and b.i <= n2, "an icon that is there", b.i) elseif b.kind == "moreapps" then more = b.i end
+      end
+      if not more then break end
+      at = at + more
+      if at >= n2 then break end
+    end
+    local gone = 0
+    for i = 1, n2 do if not got[i] then gone = gone + 1 end end
+    ok(gone == 0, "every icon can be reached by MORE", size[1] .. "x" .. size[2] .. " of " .. n2 .. " missing " .. gone)
+  end
+  local groups, seen, skip = { 2, 12, 4, 9, 6 }, {}, 0
+  for _ = 1, 60 do
+    local more
+    for _, b in ipairs((T.DeckLayout({ kind = "switches", groups = groups, skip = skip }, size[1], size[2]))) do
+      if b.kind == "switch" then seen[b.group .. ":" .. b.i] = true elseif b.kind == "more" then more = b.i end
+    end
+    if not more or more <= 0 then break end
+    skip = skip + more
+  end
+  local miss = 0
+  for g, k in ipairs(groups) do for i = 1, k do if not seen[g .. ":" .. i] then miss = miss + 1 end end end
+  ok(miss == 0, "every switch can be reached by MORE", size[1] .. "x" .. size[2] .. " missing " .. miss)
+end
+
 -- a layout is cheap: no more boxes than a screen can hold
 local most = 0
 for _, v in pairs(VIEWS) do for _, s in ipairs(SIZES) do most = math.max(most, #(T.DeckLayout(v, s[1], s[2]))) end end

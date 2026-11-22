@@ -19,7 +19,7 @@
     { kind = "home",  cards = n, apps = n, dock = n }
     { kind = "page",  boxes = n, tabs = n, rows = n, keys = n, big = true, hero = true, say = true, strip = true, textLines = n }
     { kind = "steps", steps = n, textLines = n, note = true, keys = n, hero = true }
-    { kind = "switches", groups = { n, n, ... } }
+    { kind = "switches", groups = { n, n, ... } }           `skip` = how far a list is scrolled (all kinds)
   SWITCHES (sw[key] == false hides): cards, apps, dock, hero, boxes, tabs, strip, say, keys, list, code.
 ]]
 BiSTheme = BiSTheme or {}
@@ -118,18 +118,26 @@ local function foot(out, x, bottom, w, sw)
 end
 
 --- The apps as a grid in a band: `per` across; more than fit = pages (`more`).
-local function appGrid(out, n, x, y, w, h)
+-- (more icons than fit: the last place is MORE, and the next press starts where this page ended - none is out of reach)
+local function pageOf(n, room, skip)
+  if n <= room then return 0, n, false end
+  local show = max(1, room - 1)
+  local at = skip or 0
+  if at >= n or at < 0 then at = 0 end
+  return at, min(show, n - at), room > 1
+end
+local function appGrid(out, n, x, y, w, h, skip)
   if n <= 0 or h < L.APP_H then return 0 end
   local per = fit(99, w, L.APP_W)
   local rows = max(1, floor((h + L.GAP) / (L.APP_H + L.GAP)))
   local room = per * rows
-  local show = min(n, room)
+  local at, show, more = pageOf(n, room, skip)
   local each = (w - (per - 1) * L.GAP) / per
-  for i = 1, show do
+  for i = 1, show + (more and 1 or 0) do
     local cx, cy = (i - 1) % per, floor((i - 1) / per)
-    out[#out + 1] = { kind = "app", i = i, x = x + cx * (each + L.GAP), y = y + cy * (L.APP_H + L.GAP), w = each, h = L.APP_H, pages = ceil(n / room) }
+    out[#out + 1] = { kind = i > show and "moreapps" or "app", i = i > show and show or at + i, x = x + cx * (each + L.GAP), y = y + cy * (L.APP_H + L.GAP), w = each, h = L.APP_H }
   end
-  return ceil(show / per) * (L.APP_H + L.GAP)
+  return ceil((show + (more and 1 or 0)) / per) * (L.APP_H + L.GAP)
 end
 
 --- The dock, centred.
@@ -142,19 +150,24 @@ local function dock(out, n, x, y, w)
 end
 
 --- The rail of apps down the left side (landscape). Answers the x after it.
-local function rail(out, n, x, y, h)
+local function rail(out, n, x, y, h, skip)
   local room = max(1, floor((h + L.GAP) / (L.RAIL - 8 + L.GAP)))
-  for i = 1, min(n, room) do
-    out[#out + 1] = { kind = "railapp", i = i, x = x, y = y + (i - 1) * (L.RAIL - 8 + L.GAP), w = L.RAIL - 8, h = L.RAIL - 8, pages = ceil(n / room) }
+  local at, show, more = pageOf(n, room, skip)
+  for i = 1, show + (more and 1 or 0) do
+    out[#out + 1] = { kind = i > show and "moreapps" or "railapp", i = i > show and show or at + i, x = x, y = y + (i - 1) * (L.RAIL - 8 + L.GAP), w = L.RAIL - 8, h = L.RAIL - 8 }
   end
   return x + L.RAIL
 end
 
---- Rows filling a band; answers how many.
-local function rowList(out, kind, n, x, y, w, h, first)
+--- Rows filling a band from the `skip`th on (the wheel, the pad's triggers): never past the end, so the last row is always
+--- reachable and the band is never half empty. Answers how many; a row knows how many there are over and under what shows.
+local function rowList(out, kind, n, x, y, w, h, first, skip)
   local room = max(0, floor((h + 2) / (L.ROW + 2)))
   local show = min(n, room)
-  for i = 1, show do out[#out + 1] = { kind = kind, i = (first or 0) + i, x = x, y = y + (i - 1) * (L.ROW + 2), w = w, h = L.ROW, pages = room > 0 and ceil(n / room) or 1 } end
+  skip = max(0, min(skip or 0, n - show))
+  for i = 1, show do
+    out[#out + 1] = { kind = kind, i = (first or 0) + skip + i, x = x, y = y + (i - 1) * (L.ROW + 2), w = w, h = L.ROW, over = skip, under_ = n - show - skip }
+  end
   return show
 end
 
@@ -173,7 +186,7 @@ local function home(out, v, w, h, sw)
   end
   if T.DeckShape(w, h) == "landscape" then
     if nApps > 0 and W >= 360 then
-      local nx = rail(out, nApps, x, y, bottom - y)
+      local nx = rail(out, nApps, x, y, bottom - y, v.appSkip)
       W, x = W - (nx - x), nx
     end
     if nCards > 0 then
@@ -211,7 +224,7 @@ local function home(out, v, w, h, sw)
     out[#out + 1] = { kind = "card", i = i, x = x, y = y, w = W, h = ch - L.GAP, btn = i <= btns }
     y = y + ch
   end
-  appGrid(out, nApps, x, y, W, bottom - y)
+  appGrid(out, nApps, x, y, W, bottom - y, v.appSkip)
 end
 
 --- The right side of a page (or the bottom of a tall one): the big button over its keys, from the bottom up.
@@ -235,7 +248,7 @@ local function page(out, v, w, h, sw)
   local hero = v.hero and on(sw, "hero")
   if T.DeckShape(w, h) == "landscape" then
     if (v.apps or 0) > 0 and W >= 560 then
-      local nx = rail(out, v.apps, x, y, bottom - y)
+      local nx = rail(out, v.apps, x, y, bottom - y, v.appSkip)
       W, x = W - (nx - x), nx
     end
     -- the list left, the detail right
@@ -245,7 +258,7 @@ local function page(out, v, w, h, sw)
       if nt > 0 then local ty = c.y0 c.y0 = ty + L.TAB_H + L.GAP spread(out, "tab", nt, x, ty, lw, L.TAB_H) end
       if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
       if v.say and on(sw, "say") then c:bottom("say", L.SAY) end
-      rowList(out, "row", v.rows, x, c.y0, lw, c:left())
+      rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip)
       x, W = x + lw + L.GAP * 2, W - lw - L.GAP * 2
     end
     local c = column(out, x, y, W, bottom - y)
@@ -287,10 +300,11 @@ local function page(out, v, w, h, sw)
     if W >= 2 * L.ROW_MIN_W + 160 then
       local half = (W - L.GAP) / 2
       local room = max(1, floor((c:left() + 2) / (L.ROW + 2)))
-      rowList(out, "row", min(v.rows, room), x, c.y0, half, c:left())
-      if v.rows > room then rowList(out, "row", v.rows - room, x + half + L.GAP, c.y0, half, c:left(), room) end
+      local skip = max(0, min(v.skip or 0, v.rows - 2 * room))
+      rowList(out, "row", min(v.rows - skip, room), x, c.y0, half, c:left(), skip)
+      if v.rows - skip > room then rowList(out, "row", min(v.rows - skip - room, room), x + half + L.GAP, c.y0, half, c:left(), skip + room) end
     else
-      rowList(out, "row", v.rows, x, c.y0, W, c:left())
+      rowList(out, "row", v.rows, x, c.y0, W, c:left(), 0, v.skip)
     end
   end
 end
@@ -330,7 +344,7 @@ local function steps(out, v, w, h, sw)
     out[#out + 1] = { kind = "progress", x = x, y = y, w = W, h = L.PROG }
     y = y + L.PROG + L.GAP
     if list then
-      rowList(out, "step", v.steps or 0, x, y, lw, bottom - y)
+      rowList(out, "step", v.steps or 0, x, y, lw, bottom - y, 0, v.skip)
       x, W = x + lw + 2 * L.GAP, W - lw - 2 * L.GAP
     end
     local c = column(out, x, y, W, bottom - y)
@@ -346,7 +360,7 @@ local function steps(out, v, w, h, sw)
     if room >= L.HERO_MIN then c:top("hero", min(floor(h * L.HERO_SHARE), room - L.GAP)) end
   end
   stepCard(out, c, v, sw)
-  if list and c:left() >= L.ROW then rowList(out, "step", v.steps or 0, x, c.y0, W, c:left()) end
+  if list and c:left() >= L.ROW then rowList(out, "step", v.steps or 0, x, c.y0, W, c:left(), 0, v.skip) end
 end
 
 --- The switches: presets, a group head and its rows, the size sliders at the bottom.
@@ -369,10 +383,20 @@ local function switches(out, v, w, h, sw)
   local cols = fit(4, W, 200)
   local each = (W - (cols - 1) * L.GAP) / cols
   local col, yy = 0, c.y0
-  for _, a in ipairs(all) do
+  -- what does not fit is one press away: the last place says MORE (the wheel and the pad's triggers do the same)
+  local skip = max(0, min(v.skip or 0, #all - 1))
+  for k = skip + 1, #all do
+    local a = all[k]
     local ph = a.head and L.NOTE or L.ROW
     if yy + ph > c.y1 then col, yy = col + 1, c.y0 end
-    if col >= cols or yy + ph > c.y1 then break end
+    local lastCol = col == cols - 1
+    local rest = #all - k
+    if col >= cols or yy + ph > c.y1 or (lastCol and rest > 0 and yy + ph + 2 + L.ROW > c.y1) then
+      col = min(col, cols - 1)
+      local ry = min(yy, c.y1 - L.ROW)
+      if col < cols and ry >= c.y0 then out[#out + 1] = { kind = "more", i = k - skip - 1, x = x + col * (each + L.GAP), y = ry, w = each, h = L.ROW } end
+      break
+    end
     out[#out + 1] = { kind = a.head and "swhead" or "switch", group = a.head or a.group, i = a.i, x = x + col * (each + L.GAP), y = yy, w = each, h = ph }
     yy = yy + ph + 2
   end

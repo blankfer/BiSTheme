@@ -75,6 +75,7 @@ local function find(kind, i) local k = 0 for _, w in ipairs(D.frame.pieces) do i
 local function count(kind) local k = 0 for _, w in ipairs(D.frame.pieces) do if w.shown and w.kind == kind then k = k + 1 end end return k end
 local function click(w) w.scripts.OnClick(w) end
 
+function shownAppsForTest() local out = {} for _, d in pairs(D.defs) do if d.page and not d.parked or (d.page and d.parked) then out[#out + 1] = d end end return out end
 -- before the login only data: no frame
 local saveA, saveB = {}, { deck = { at = 50, open = false, portrait = { w = 300, h = 520 }, sw = { hero = false } } }
 local stepsDone = { true, false, false }
@@ -150,7 +151,12 @@ ok(find("steptext").a.text == "Pick it up", "a step in the list goes to it")
 -- the switches
 click(find("back")) click(find("gear"))
 ok(D.page == "switches" and count("switch") >= 8 and count("preset") == 3, "the gear: the switches")
+ok(find("swhead", 1).a.text == "EASIER TO USE" and find("switch", 1).a.text == "Read aloud" and find("switch", 1).b.text == "OFF", "the easier-to-use ones first, off until asked for")
 click(find("switch", 1))
+ok(D.Store().easy.speak == true and find("switch", 1).b.text == "ON", "and on with one press")
+click(find("switch", 1))
+ok(D.Store().easy.speak == nil, "and off again")
+click(find("switch", 3))
 ok(D.Store().sw.cards == false and saveA.deck == saveB.deck and saveA.deck.sw.cards == false, "a switch is kept, in every addon's save")
 click(find("gear"))
 ok(count("card") == 0, "no cards now")
@@ -221,6 +227,40 @@ do
       for _, fs in ipairs({ w.a, w.b, w.c }) do if fs.text and fs.text ~= "" then small = math.min(small, fs.px) end end end end
   end
   ok(small >= 10, "no small print", small)
+  -- nothing out of reach: the wheel and MORE
+  D.Open("BiSTools:bosses")
+  local firstRow = find("row", 1).a.text
+  D.frame.scripts.OnMouseWheel(D.frame, -1)
+  ok(find("row", 1).a.text ~= firstRow, "the wheel scrolls a long list", find("row", 1).a.text)
+  for _ = 1, 60 do D.frame.scripts.OnMouseWheel(D.frame, -1) end
+  local lastSeen
+  for i = 1, count("row") do lastSeen = find("row", i).a.text end
+  ok(lastSeen == "Boss 30", "to the last one, and stops there", lastSeen)
+  for _ = 1, 80 do D.frame.scripts.OnMouseWheel(D.frame, 1) end
+  ok(find("row", 1).a.text == firstRow, "and back to the first")
+  D.page = "switches" D.Size(220, 300)
+  local names = {}
+  for _ = 1, 30 do
+    for i = 1, count("switch") do names[find("switch", i).a.text] = true end
+    if not find("more") then break end
+    click(find("more"))
+  end
+  local want, got = 0, 0
+  for _, g in ipairs(D.SWITCHES) do for _, s in ipairs(g[2]) do want = want + 1 if names[s[2]] then got = got + 1 end end end
+  ok(got == want, "the smallest deck: every switch by MORE", got .. " of " .. want)
+  for i = 1, 14 do D.Register{ owner = "BiSMany", key = "p" .. i, name = "P" .. i, order = 200 + i, page = { rows = function() return {} end } } end
+  D.page = "home" D.Size(220, 300)
+  local icons = {}
+  for _ = 1, 40 do
+    for i = 1, count("app") do icons[find("app", i).c.text] = true end
+    if not find("moreapps") then break end
+    click(find("moreapps"))
+  end
+  local ni = 0 for _ in pairs(icons) do ni = ni + 1 end
+  ok(ni == #shownAppsForTest(), "the smallest deck: every icon by MORE", ni .. " of " .. #shownAppsForTest())
+  for i = 1, 14 do D.defs["BiSMany:p" .. i] = nil end
+  D.sorted = nil D.appSkip = nil
+  D.Size(260, 462)
   -- the pad
   local nav
   ok(D.Focus(true) == false, "no pad kit: no focus, no error")
@@ -234,6 +274,10 @@ do
   nav.tabs.next()
   ok(D.defs["BiSTools:bosses"].tab == 2, "RB: the next tab")
   nav.tabs.prev()
+  local r1 = find("row", 1).a.text
+  nav.scroll(-1)
+  ok(find("row", 1).a.text ~= r1, "RT: the list scrolls")
+  nav.scroll(1)
   ok(D.defs["BiSTools:bosses"].tab == 1, "LB: the one before")
   nav.back()
   ok(D.page == "home" and D.padFrame.shown, "B: home first")

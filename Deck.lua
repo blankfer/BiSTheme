@@ -230,12 +230,12 @@ local function dockList()
 end
 
 D.SWITCHES = {
+  -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
+  { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
   { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
   { "EVERYWHERE", { { "code", "Faint code line" } } },
-  -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
-  { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
 }
 
 --- The data of the open page, asked once a paint.
@@ -244,12 +244,12 @@ function D.Model()
   m.apps = shownApps()
   if m.page == "home" then
     m.cards, m.dock = D.Cards(), dockList()
-    m.view = { kind = "home", cards = #m.cards, apps = #m.apps, dock = #m.dock }
+    m.view = { kind = "home", cards = #m.cards, apps = #m.apps, dock = #m.dock, appSkip = D.appSkip }
     m.title, m.kicker = "BiS>", (D.profile or "") .. (D.Store().pin and " - pinned" or "")
   elseif m.page == "switches" then
     local groups = {}
     for i, g in ipairs(D.SWITCHES) do groups[i] = #g[2] end
-    m.view = { kind = "switches", groups = groups }
+    m.view = { kind = "switches", groups = groups, skip = D.skip or 0 }
     m.title, m.kicker = "Switches", "PER CHARACTER"
   else
     local d = D.defs[m.page]
@@ -264,7 +264,8 @@ function D.Model()
       m.cur = D.StepAt(d, m.steps)
       local s = m.steps[m.cur]
       m.big = s.button
-      m.view = { kind = "steps", steps = #m.steps, textLines = math.min(4, math.ceil(#tostring(s.text or "") / 34)), note = s.note and true or nil, keys = 0 }
+      m.view = { kind = "steps", steps = #m.steps, textLines = math.min(4, math.ceil(#tostring(s.text or "") / 34)), note = s.note and true or nil, keys = 0,
+        skip = math.max(0, m.cur - 3 + (D.skip or 0)) }                 -- (the step you are on stays in sight)
     else
       m.tabs = p.tabs and D.Call(d, "tabs", p.tabs) or {}
       m.tab = math.max(1, math.min(#m.tabs, d.tab or 1))
@@ -273,7 +274,7 @@ function D.Model()
       m.text = p.text and D.Call(d, "text", p.text) or nil
       m.say = p.say and D.Call(d, "say", p.say) or nil
       m.view = { kind = "page", boxes = #m.boxes, tabs = #m.tabs, rows = #m.rows, keys = #m.keys, big = m.big and true or nil,
-        say = m.say and true or nil, textLines = m.text and math.max(1, math.ceil(#m.text / 46)) or 0, apps = #m.apps }
+        say = m.say and true or nil, textLines = m.text and math.max(1, math.ceil(#m.text / 46)) or 0, apps = #m.apps, appSkip = D.appSkip, skip = D.skip or 0 }
     end
   end
   return m
@@ -305,10 +306,10 @@ end
 -- THE SKIN ----------------------------------------------------------------------------------------------------------
 
 local CLICK = { close = 1, shape = 1, gear = 1, back = 1, home = 1, card = 1, app = 1, railapp = 1, dock = 1, tab = 1, row = 1, big = 1, key = 1,
-  link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1 }
+  link = 1, step = 1, preset = 1, switch = 1, cardbtn = 1, more = 1, moreapps = 1 }
 local LOOK = {                                            -- kind -> ground colour, alpha
   card = { "card", 1 }, dockbar = { "card", 0.7 }, dock = { "sunken", 0.8 }, box = { "card", 1 }, tab = { "card", 1 }, row = { "sunken", 0.55 },
-  step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 },
+  step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
   cardbtn = { "sunken", 1 }, grip = { "line", 0 }, app = { "line", 0 }, railapp = { "line", 0 },
 }
@@ -435,6 +436,15 @@ function PAINT.app(w, o, m)
   w.tip = d.name
 end
 PAINT.railapp = PAINT.app
+function PAINT.moreapps(w, o, m)
+  say(w.a, "MORE", 11, "accent", "CENTER")
+  w.act = function()
+    local at = (D.appSkip or 0) + math.max(1, o.i)
+    D.appSkip = at < #m.apps and at or 0
+    D.Dirty(true)
+  end
+  w.tip = "More icons"
+end
 function PAINT.dock(w, o, m)
   local d = m.dock[o.i]
   if not d then return end
@@ -494,6 +504,7 @@ function PAINT.progress(w, o, m)
   for i, s in ipairs(m.steps) do if s.isDone or m.def.skipped[i] then n = n + 1 end end
   stripe(w, "fill", "TOPLEFT", 0, 0, math.max(1, o.w * n / math.max(1, #m.steps)), o.h, "good")
 end
+function PAINT.more(w, o) say(w.a, "MORE ...", 12, "accent", "CENTER") w.act = function() D.Scroll(math.max(1, o.i)) end end
 function PAINT.preset(w, o)
   say(w.a, ({ "ALL", "LEAN", "BARE" })[o.i], 12, "ink2", "CENTER")
   w.act = function() D.Preset(o.i) end
@@ -568,6 +579,8 @@ function D.Build()
   f.bg:SetAllPoints(f)
   local r, g, b = rgb("ground")
   f.bg:SetColorTexture(r, g, b, 0.97)
+  if f.EnableMouseWheel then f:EnableMouseWheel(true) end
+  f:SetScript("OnMouseWheel", function(_, delta) if not D.fight then D.Scroll(-(delta or 0)) end end)
   f:SetScript("OnHide", function() D.DragEnd() D.Sleep() end)
   f:Hide()
   D.frame = f
@@ -630,6 +643,8 @@ end
 function D.Paint()
   local f = D.frame
   if not (f and f:IsShown()) then return 0 end
+  local at = (D.page or "home") .. ":" .. tostring((D.defs[D.page or ""] or {}).tab)
+  if D.skipAt ~= at then D.skipAt, D.skip = at, 0 end
   local m = D.Model()
   D.strong = (D.Store().easy or {}).strong and true or false
   local boxes = T.DeckLayout(m.view, D.W, D.H, D.Store().sw)
@@ -742,13 +757,33 @@ function D.Focus(want)
     p:Hide()
     p:SetSize(1, 1)
     p:SetPoint("TOPLEFT", D.frame, "TOPLEFT", 0, 0)
-    T.PadNav(p, { items = D.PadItems, back = D.PadBack, tabs = { prev = function() D.PadTab(-1) end, next = function() D.PadTab(1) end } })
+    T.PadNav(p, { items = D.PadItems, back = D.PadBack, tabs = { prev = function() D.PadTab(-1) end, next = function() D.PadTab(1) end },
+      scroll = function(delta) D.Scroll(-(delta or 0)) end })
     D.padFrame = p
   end
   if not p then return false end
   if want then p:Show() else p:Hide() end
   D.focused = want and true or false
   return true
+end
+
+--- Scroll what is listed: the wheel, the pad's triggers, MORE. Another page or tab starts at its top.
+function D.Scroll(by)
+  local at = (D.page or "home") .. ":" .. tostring((D.defs[D.page or ""] or {}).tab)
+  if D.skipAt ~= at then D.skipAt, D.skip = at, 0 end
+  local was = D.skip or 0
+  D.skip = was + by
+  local least = (D.defs[D.page or ""] or {}).page and D.defs[D.page].page.steps and -999 or 0
+  local most = 0
+  local f = D.frame
+  if f and f:IsShown() then
+    local m = D.Model()
+    local n = m.view.kind == "steps" and (m.view.steps or 0) or m.view.kind == "page" and (m.view.rows or 0) or 0
+    if m.view.kind == "switches" then for _, k in ipairs(m.view.groups) do n = n + k + 1 end end
+    most = n
+  end
+  D.skip = math.max(least, math.min(D.skip, math.max(0, most - 1)))
+  D.Dirty(true)
 end
 
 function D.Open(id) if D.defs[id] and D.defs[id].page then D.page = id D.Show() D.Dirty(true) end end
