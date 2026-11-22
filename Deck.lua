@@ -624,13 +624,14 @@ end
 local function fit(fs, words, sizes, colour, justify, room)
   local key = tostring(words) .. "|" .. sizes[1] .. "|" .. math.floor(room)
   if fs.fitKey == key and wide(fs) then say(fs, words, fs.fitPx, colour, justify) return fs.fitPx end       -- (measured once, not at every paint)
-  local got = sizes[#sizes]
+  local got, asked = sizes[#sizes], false
   for _, px in ipairs(sizes) do
     say(fs, words, px, colour, justify)
     local v = wide(fs)
+    asked = v ~= nil
     if not v or v <= room then got = px break end
   end
-  fs.fitKey, fs.fitPx = key, got
+  fs.fitKey, fs.fitPx = asked and key or nil, got
   return got
 end
 
