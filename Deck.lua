@@ -15,6 +15,9 @@
                rows = fn(tab) -> { { text, right, mark, ink, done, act = button } }, big = fn -> button, keys = fn -> { button },
                text = fn -> string, say = fn -> string, steps = fn -> { { phase, text, note, button, done } } },
       dock = { word = "FIND", fn = fn, hot = fn }, badge = fn -> number, store = fn -> table (its own saved table),
+      state = fn -> "on" | "off" | "missing" (default on), about = words, turnOn = button,   -- not on: gray, opens what it is
+      open = fn (the icon runs this instead of a page), dev = true (a tool of ours: gray, last), hidden = true (no icon),
+      page.tour = { { text, note }, ... }                  -- shown once, the first time the page is opened
     }
     H:Dirty()                                            -- something changed: painted at the next beat, only while shown
   A button = { word, fn = function } - or macro / item / spell: those are SECURE and wait for the overlay (below).
@@ -107,6 +110,12 @@ local function sorted()
   end)
   D.sorted = out
   return out
+end
+
+--- "on", "off" or "missing": may it do its work? An icon that is not on is gray, says so in a word, and opens what it is.
+function D.State(def)
+  local s = def.state and D.Call(def, "state", def.state) or "on"
+  return (s == "off" or s == "missing") and s or "on"
 end
 
 -- SAVED: each addon lends a table; the newest stamp wins at the first read, and every one is written --------------------
@@ -203,9 +212,28 @@ function D.Pin(name) local st = D.Store() st.pin = name or nil D.profile = nil D
 
 -- THE VIEW: what the layout needs to know (counts), and what the boxes say ---------------------------------------------
 
+--- Every icon there could be, in its place: what is on, then what is off, what you do not have, and our own tools last.
+function D.Icons()
+  local ranks = { on = {}, off = {}, missing = {}, dev = {} }
+  for _, d in ipairs(sorted()) do
+    if not d.hidden and (d.page or d.open or d.about) then
+      local s = d.dev and "dev" or D.State(d)
+      table.insert(ranks[s], { d, s })
+    end
+  end
+  local out = {}
+  for _, k in ipairs({ "on", "off", "missing", "dev" }) do for _, x in ipairs(ranks[k]) do out[#out + 1] = x end end
+  return out
+end
+--- Is this icon on the home screen? (hidden by hand, or the switch for what you do not have)
+function D.Shown(def, state)
+  local st = D.Store()
+  if st.apps[def.id] == false then return false end
+  return not (state == "missing" and st.sw.missing == false)
+end
 local function shownApps()
-  local st, out = D.Store(), {}
-  for _, d in ipairs(sorted()) do if d.page and st.apps[d.id] ~= false then out[#out + 1] = d end end
+  local out = {}
+  for _, x in ipairs(D.Icons()) do if D.Shown(x[1], x[2]) then out[#out + 1] = x[1] end end
   return out
 end
 --- The cards that have something to say now, the most urgent first (a tie keeps its order).
@@ -232,7 +260,7 @@ end
 D.SWITCHES = {
   -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
   { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
-  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" } } },
+  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "dock", "Dock" }, { "missing", "Addons you do not have" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
   { "EVERYWHERE", { { "code", "Faint code line" } } },
@@ -254,14 +282,28 @@ function D.Model()
   else
     local d = D.defs[m.page]
     local p = d and d.page
+    local state = d and not d.parked and D.State(d) or "on"
+    if d and not d.parked and d.about and (state ~= "on" or not p) then
+      -- what it is, and one button to have it: a gray icon's page
+      m.def, m.about = d, state
+      m.title, m.kicker = d.name or d.key, state == "missing" and "not installed" or state == "off" and "off" or "on"
+      m.text = tostring(D.Call(d, "about", d.about) or "")
+      m.big = state == "off" and d.turnOn or nil
+      if state == "missing" then m.text = m.text .. " Get it: in the CurseForge app, search for " .. (d.find or d.owner) .. "." end
+      m.boxes, m.tabs, m.rows, m.keys, m.tab = {}, {}, {}, {}, 1
+      m.view = { kind = "page", boxes = 0, tabs = 0, rows = 0, keys = 0, big = m.big and true or nil, textLines = math.ceil(#m.text / 34) + 1, apps = #m.apps, appSkip = D.appSkip }
+      return m
+    end
     if not p or d.parked then D.page = "home" if d and d.parked then d.parkedSaid = true end return D.Model() end
     m.def = d
     m.title, m.kicker = D.Call(d, "title", p.title) or d.name, D.Call(d, "kicker", p.kicker) or (d.name or ""):upper()
     m.steps = p.steps and D.Call(d, "steps", p.steps) or nil
+    local tour = D.Tour(d)
+    if tour then m.def, m.steps, m.kicker = tour, tour.steps, "first time here" end
     m.big = p.big and D.Call(d, "big", p.big) or nil
     m.keys = p.keys and D.Call(d, "keys", p.keys) or {}
     if type(m.steps) == "table" and #m.steps > 0 then
-      m.cur = D.StepAt(d, m.steps)
+      m.cur = D.StepAt(m.def, m.steps)
       local s = m.steps[m.cur]
       m.big = s.button
       m.view = { kind = "steps", steps = #m.steps, textLines = math.min(4, math.ceil(#tostring(s.text or "") / 34)), note = s.note and true or nil, keys = 0,
@@ -278,6 +320,25 @@ function D.Model()
     end
   end
   return m
+end
+
+--- A page's first visit: its own words, one at a time, GOT IT; then never again (the Apps page has them all back).
+function D.Tour(def)
+  local list = def.page and def.page.tour
+  local st = D.Store()
+  st.toured = type(st.toured) == "table" and st.toured or {}
+  if type(list) ~= "table" or #list == 0 or st.toured[def.id] then return nil end
+  local t = def.tourDef
+  if not t then
+    t = { id = def.id .. ":tour", owner = def.owner, key = def.key, name = def.name, at = 0, skipped = {}, steps = {} }
+    def.tourDef = t
+    function t.over() D.Store().toured[def.id] = true def.tourDef = nil D.Save() end
+    for i, s in ipairs(list) do
+      t.steps[i] = { phase = "HELLO", text = s.text, note = s.note, done = function() return t.at >= i end,
+        button = { word = i < #list and "GOT IT" or "START", fn = function() t.at = math.max(t.at, i) t.stepAt, t.stepHeld = nil, nil if i == #list then t.over() end end } }
+    end
+  end
+  return t
 end
 
 --- The step shown: the one picked by hand, else the first not done and not skipped.
@@ -298,7 +359,8 @@ function D.StepAt(def, steps)
 end
 function D.Step(def, steps, how)
   local at = def.stepAt or 1
-  if how == "skip" then def.skipped[at] = true def.stepAt, def.stepHeld = nil, nil
+  if how == "skip" and def.over then def.over()              -- (a tour's skip = enough of it)
+  elseif how == "skip" then def.skipped[at] = true def.stepAt, def.stepHeld = nil, nil
   else def.stepAt, def.stepHeld = math.max(1, math.min(#steps, at + (how == "back" and -1 or 1))), true end
   D.Dirty(true)
 end
@@ -423,17 +485,20 @@ function PAINT.card(w, o, m)
   say(w.a, l[3] or "", 16, "ink")
   say(w.b, l[4] or "", 15, l[5] or "ink2", "RIGHT")
   w.hot = l.hot
-  if c and c.def.page then w.act = function() D.Open(c.def.id) end end
+  if c and (c.def.page or c.def.open) then w.act = function() D.Open(c.def.id) end end
 end
 function PAINT.app(w, o, m)
   local d = m.apps[o.i]
   if not d then return end
-  say(w.a, d.icon or (d.name or "?"):sub(1, 2), 15, "ink", "CENTER")
-  say(w.c, o.kind == "app" and (d.name or "") or "", 11, "ink2", "CENTER")
-  local n = d.badge and D.Call(d, "badge", d.badge)
-  say(w.b, (type(n) == "number" and n > 0) and tostring(n) or "", 11, "gold", "RIGHT")
+  local state = d.dev and "dev" or D.State(d)
+  local gray = state ~= "on"
+  say(w.a, d.icon or (d.name or "?"):sub(1, 2), 15, gray and "dim" or "ink", "CENTER")
+  say(w.c, o.kind == "app" and (d.name or "") or "", 11, gray and "dim" or "ink2", "CENTER")
+  local n = (state == "on" or state == "dev") and d.badge and D.Call(d, "badge", d.badge)
+  if type(n) == "number" and n > 0 then say(w.b, tostring(n), 11, gray and "dim" or "gold", "RIGHT")
+  else say(w.b, o.kind == "app" and ({ off = "OFF", missing = "GET", dev = "DEV" })[state] or "", 10, "dim", "RIGHT") end   -- (a word, never the gray alone)
   w.act = function() D.Open(d.id) end
-  w.tip = d.name
+  w.tip = (d.name or d.key) .. (({ off = " - off: what it is, and a button to turn it on", missing = " - you do not have it: what it is", dev = " - a tool of ours" })[state] or "")
 end
 PAINT.railapp = PAINT.app
 function PAINT.moreapps(w, o, m)
@@ -597,6 +662,7 @@ function D.DragEnd()
     st[T.DeckShape(D.W, D.H)] = st[T.DeckShape(D.W, D.H)] or {}
     st[T.DeckShape(D.W, D.H)].pos = { p, plain(rp) or p, x, y }
     D.Save()
+    D.Dirty()
   end
 end
 
@@ -633,7 +699,7 @@ end
 function D.Preset(i)
   local st = D.Store()
   st.sw = {}
-  local off = i == 2 and { "hero", "strip", "say", "keys" } or i == 3 and { "hero", "strip", "say", "keys", "cards", "boxes", "dock", "code" } or {}
+  local off = i == 2 and { "hero", "strip", "say", "keys", "missing" } or i == 3 and { "hero", "strip", "say", "keys", "cards", "boxes", "dock", "code", "missing" } or {}
   for _, k in ipairs(off) do st.sw[k] = false end
   D.Save()
   D.Dirty(true)
@@ -719,7 +785,7 @@ function D.GripMove()
   local x, y = GetCursorPosition()
   D.Size(g.w + (x / g.s - g.x), g.h + (g.y - y / g.s))
 end
-function D.GripEnd() if D.grip then D.grip = nil D.Save() end end
+function D.GripEnd() if D.grip then D.grip = nil D.Save() D.Dirty() end end
 
 --- Something changed: painted at the next beat (`now` = at once), only while shown.
 function D.Dirty(now)
@@ -737,13 +803,11 @@ function D.PadItems()
 end
 function D.PadBack() if (D.page or "home") ~= "home" then D.page = "home" D.Dirty(true) else D.Focus(false) end end
 function D.PadTab(by)
-  local def = D.defs[D.page or ""]
-  if not def or not def.page then return false end
-  if def.page.steps then
-    local steps = D.Call(def, "steps", def.page.steps)
-    if type(steps) == "table" and #steps > 0 then D.Step(def, steps, by < 0 and "back" or "next") return true end
-  end
-  local tabs = def.page.tabs and D.Call(def, "tabs", def.page.tabs) or {}
+  local m = D.Model()
+  local def = m.def
+  if not def then return false end
+  if m.view.kind == "steps" then D.Step(def, m.steps, by < 0 and "back" or "next") return true end
+  local tabs = m.tabs or {}
   if #tabs == 0 then return false end
   def.tab = ((def.tab or 1) - 1 + by) % #tabs + 1
   D.Dirty(true)
@@ -773,11 +837,11 @@ function D.Scroll(by)
   if D.skipAt ~= at then D.skipAt, D.skip = at, 0 end
   local was = D.skip or 0
   D.skip = was + by
-  local least = (D.defs[D.page or ""] or {}).page and D.defs[D.page].page.steps and -999 or 0
-  local most = 0
+  local least, most = 0, 0
   local f = D.frame
   if f and f:IsShown() then
     local m = D.Model()
+    if m.view.kind == "steps" then least = -999 end
     local n = m.view.kind == "steps" and (m.view.steps or 0) or m.view.kind == "page" and (m.view.rows or 0) or 0
     if m.view.kind == "switches" then for _, k in ipairs(m.view.groups) do n = n + k + 1 end end
     most = n
@@ -786,12 +850,27 @@ function D.Scroll(by)
   D.Dirty(true)
 end
 
-function D.Open(id) if D.defs[id] and D.defs[id].page then D.page = id D.Show() D.Dirty(true) end end
+--- An icon, a card, a handle: its page, or what `open` runs, or (not on) what it is.
+function D.Open(id)
+  local d = D.defs[id]
+  if not d then return false end
+  if d.open and D.State(d) == "on" then
+    if D.fight then return false end
+    D.Call(d, "open", d.open)
+    return true
+  end
+  if not (d.page or d.about) then return false end
+  D.page = id
+  D.Show()
+  D.Dirty(true)
+  return true
+end
 function D.Show()
   if not T.DECK_LOGIN then return false end
   D.Build()
   local st = D.Store()
   if not D.W then D.Place(st.shape == "landscape" and "landscape" or "portrait") end
+  if D.Apps then D.Apps() end                               -- (DeckApps.lua: the other addons' icons, the welcome)
   D.Look()
   D.frame:Show()
   D.Wake()

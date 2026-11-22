@@ -349,6 +349,142 @@ for _, page in ipairs({ "home", "switches", "BiSTools:bosses", "BiSTools:run", "
     ok(okP, "paints " .. page .. " " .. s[1] .. "x" .. s[2], why)
   end
 end
+-- THE FIRST DAY (Arn, 22 Nov: "build the infrastructure for the onboarding stuff ... put my tools in there but grayed out")
+do
+  local there = { BiSTools = "on", BiSHealing = "on", BiSGuild = "off" }              -- the rest: not installed
+  local asked, turned, reloads, doors = 0, nil, 0, {}
+  _G.C_AddOns = {
+    IsAddOnLoaded = function(n) asked = asked + 1 return there[n] == "on", there[n] == "on" end,
+    GetAddOnInfo = function(n)
+      if not there[n] then return n, n, nil, false, "MISSING", "INSECURE" end
+      return n, n, "words", there[n] == "on", there[n] == "off" and "DISABLED" or nil, "INSECURE"
+    end,
+    EnableAddOn = function(n) turned = n end,
+  }
+  _G.ReloadUI = function() reloads = reloads + 1 end
+  _G.SlashCmdList = { BISHEALING = function(w) doors[#doors + 1] = "healing " .. w end, BISTOOLS = function(w) doors[#doors + 1] = "tools " .. w end }
+  D.Hide()
+  assert(loadfile("DeckApps.lua"))()
+  D.page, D.skip = "home", 0
+  D.W, D.H, D.shape = nil, nil, nil
+  D.Store().portrait, D.Store().landscape, D.Store().welcomed, D.Store().shape = nil, nil, nil, nil
+  D.defs["BiSBroken:bad"] = nil D.sorted = nil
+  local mine = 0
+  D.Register{ owner = "BiSProbe", key = "deck", name = "Probe", icon = "Pd", dev = true, order = 1, open = function() mine = mine + 1 end, badge = function() return 25 end }
+  D.Show()
+  ok(D.page == "BiSDeck:welcome" and find("title").a.text == "Welcome" and find("stephead").a.text:find("WELCOME", 1, true), "the first time ever: the welcome", D.page)
+  click(find("big"))
+  ok(find("steptext").a.text:find("^Drag the deck"), "one button, on to the next", find("steptext").a.text)
+  D.frame.scripts.OnDragStart(D.frame) D.frame.scripts.OnDragStop(D.frame)
+  tick(2)
+  ok(find("steptext").a.text:find("^Pull the corner"), "you dragged it: on by itself", find("steptext").a.text)
+  find("size").scripts.OnMouseDown(find("size")) cx, cy = 5040, -140 tick(0.1) find("size").scripts.OnMouseUp(find("size"))
+  tick(2)
+  ok(find("steptext").a.text:find("^Tall or wide"), "you sized it: on", find("steptext").a.text)
+  click(find("link", 2))
+  ok(find("steptext").a.text:find("^Read aloud"), "skipped: on", find("steptext").a.text)
+  click(find("big"))
+  ok(D.page == "switches", "its button opens the switches")
+  click(find("home"))
+  ok(D.page == "home" and count("app") > 0, "home", D.page)
+  local wc
+  for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then wc = find("card", i) end end
+  ok(wc and wc.b.text:find(" / 8", 1, true), "a card says how far you are", wc and wc.b.text)
+  D.Hide() D.Show()
+  ok(D.page == "home", "it never opens by itself again", D.page)
+  click(wc)
+  ok(D.page == "BiSDeck:welcome" and find("steptext").a.text:find("^Gray icons"), "the card goes on where you were", find("steptext") and find("steptext").a.text)
+  -- the icons
+  local function icon(name)
+    D.page = "home" D.appSkip = nil D.Size(400, 760)
+    for i = 1, count("app") do local w = find("app", i) if w.c.text == name then return w, i end end
+  end
+  local w1, at1 = icon("Healing")
+  ok(w1 and w1.a.tone == "ink" and (w1.b.text or "") == "", "an addon you have: lit", w1 and w1.a.tone)
+  local w2, at2 = icon("Guild")
+  ok(w2 and w2.a.tone == "dim" and w2.b.text == "OFF" and at2 > at1, "switched off in the game's list: gray, and it says OFF", w2 and w2.b.text)
+  local w3, at3 = icon("Gamba")
+  ok(w3 and w3.a.tone == "dim" and w3.b.text == "GET" and at3 > at2, "not installed: gray, GET", w3 and w3.b.text)
+  local w4, at4 = icon("Probe")
+  ok(w4 and w4.a.tone == "dim" and w4.b.text == "25" and at4 == count("app"), "our own tool: gray, the last one, with its count", w4 and (w4.b.text .. " " .. at4))
+  click(w4)
+  ok(mine == 1 and D.page == "home", "and one click opens it")
+  click((icon("Healing")))
+  ok(doors[1] == "healing options", "a lit addon's icon opens its own window", doors[1])
+  click((icon("Tools")))
+  ok(doors[2] == "tools hub", "the hub", doors[2])
+  _G.BiSGuildAPI = nil
+  click((icon("Gamba")))
+  ok(D.page == "BiSGamba:app" and find("title").a.text == "Gamba" and find("text").a.text:find("CurseForge app, search for BiS Gamba", 1, true) and count("big") == 0, "gray: what it is and where to get it", find("text") and find("text").a.text)
+  click((icon("Guild")))
+  ok(find("big").a.text == "TURN ON (RELOADS)" and find("kicker").a.text == "OFF", "off: one button turns it on", find("big").a.text)
+  click(find("big"))
+  ok(turned == "BiSGuild" and reloads == 1, "and reloads")
+  local a0 = asked
+  D.Paint() D.Paint()
+  ok(asked == a0, "what is installed is asked once", asked - a0)
+  -- an addon of ours without a door: its words, no error
+  _G.SlashCmdList.BISHEALING = nil
+  click((icon("Healing")))
+  ok(D.page == "BiSHealing:app" and find("kicker").a.text == "ON", "no door: what it is")
+  -- the Apps page
+  D.Open("BiSDeck:apps") D.Size(400, 760)
+  local function row(name) for i = 1, count("row") do local w = find("row", i) if w.a.text:find("^" .. name) then return w end end end
+  ok(row("Gamba") and row("Gamba").a.text == "Gamba - not installed" and row("Gamba").b.text == "SHOWN" and row("Probe").a.text == "Probe - tool", "Apps: every icon, and what it is", row("Gamba") and row("Gamba").a.text)
+  click(row("Gamba"))
+  ok(row("Gamba").b.text == "HIDDEN" and D.Store().apps["BiSGamba:app"] == false, "a click hides it")
+  ok(icon("Gamba") == nil and icon("Nebbinator") ~= nil, "from home")
+  D.Open("BiSDeck:apps")
+  click(row("Gamba"))
+  ok(icon("Gamba") ~= nil, "and back")
+  D.Store().sw.missing = false
+  ok(icon("Gamba") == nil and icon("Guild") ~= nil and icon("Probe") ~= nil, "the switch: none you do not have")
+  D.Open("BiSDeck:apps")
+  click(row("Gamba"))
+  ok(icon("Gamba") ~= nil, "showing one by hand shows them again")
+  ok(row == nil or not (function() D.Open("BiSDeck:apps") return row("Apps") end)(), "Apps is not on its own list")
+  -- a page's own first words
+  D.Register{ owner = "BiSNew", key = "p", name = "New", order = 5, page = { tour = { { text = "One thing." }, { text = "Another." } }, rows = function() return { { text = "a row" } } end } }
+  D.Open("BiSNew:p")
+  ok(find("steptext").a.text == "One thing." and find("kicker").a.text == "FIRST TIME HERE", "a page's first time: its words")
+  click(find("big"))
+  ok(find("steptext").a.text == "Another." and find("big").a.text == "START", "one at a time")
+  click(find("big"))
+  ok(count("row") == 1 and count("steptext") == 0 and D.Store().toured["BiSNew:p"], "then the page, for good")
+  D.Open("BiSTools:bosses") D.Open("BiSNew:p")
+  ok(count("row") == 1, "never again")
+  click(find("back"))
+  D.Open("BiSDeck:apps")
+  click(find("key"))
+  ok(D.page == "BiSDeck:welcome" and find("steptext").a.text:find("^This is the BiS deck") and not D.Store().toured["BiSNew:p"], "WELCOME on the Apps page: all of it again", find("steptext").a.text)
+  D.Open("BiSNew:p")
+  click(find("link", 2))
+  ok(count("row") == 1, "a tour's skip is enough of it")
+  -- the pad, in a tour
+  D.Store().toured = {}
+  D.PadTab(1)
+  ok(find("steptext") and find("steptext").a.text == "Another.", "RB: the tour's next", find("steptext") and find("steptext").a.text)
+  -- NO THANKS
+  D.Store().wel = {} D.page = "home" D.Size(400, 760)
+  local before1 = 0
+  for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then before1 = before1 + 1 end end
+  for _, w in ipairs(D.frame.pieces) do if w.shown and w.kind == "cardbtn" and w.a.text == "NO THANKS" then click(w) break end end
+  local after1 = 0
+  for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then after1 = after1 + 1 end end
+  ok(before1 == 1 and after1 == 0, "NO THANKS: the card goes", before1 .. " " .. after1)
+  -- an addon that hands in its own icon wins over the catalogue's
+  ok(D.Register{ owner = "BiSGamba", key = "app", name = "Gamba!", open = function() end } and icon("Gamba!") ~= nil and icon("Gamba") == nil, "an addon's own icon wins")
+  -- no catalogue on a client that cannot say
+  for _, pg in ipairs({ "BiSDeck:apps", "BiSDeck:welcome", "BiSGuild:app", "BiSNew:p" }) do
+    for _, s in ipairs({ { 220, 300 }, { 324, 576 }, { 430, 300 }, { 1366, 768 } }) do
+      D.page, D.W, D.H, D.shape = pg, s[1], s[2], T.DeckShape(s[1], s[2])
+      local okP, why = pcall(D.Paint)
+      ok(okP, "paints " .. pg .. " " .. s[1] .. "x" .. s[2], why)
+    end
+  end
+  D.page = "home"
+end
+
 -- an older copy loading after: refused; a newer one takes over the data and builds its own frame
 local old = D.frame
 assert(loadfile("Deck.lua"))()
