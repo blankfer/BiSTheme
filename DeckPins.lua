@@ -90,12 +90,14 @@ function D.PinLines(def)
   local p = D.Call(def, "prio", def.card.prio or 1, true)
   if type(p) ~= "number" then return nil end
   local l = D.Call(def, "lines", def.card.lines, true)
-  return type(l) == "table" and l or nil
+  if type(l) ~= "table" or D.Hushed(def.id, p, l) then return nil end        -- (hidden by a right-click: its place is kept)
+  return l, p
 end
 function D.PinPaint(id)
   local def = canPin(id)
   local f = build(id)
-  local l = def and not (D.fight and D.Store().sw.pinfight == false) and not D.Store().off and D.PinLines(def) or nil
+  local l, p0
+  if def and not (D.fight and D.Store().sw.pinfight == false) and not D.Store().off then l, p0 = D.PinLines(def) end
   if not l then
     if D.pinHeld ~= id then f:Hide() end
     return false
@@ -110,7 +112,7 @@ function D.PinPaint(id)
   local btnY = D.PIN_H + nl * D.PIN_LINE + (nl > 0 and 4 or 0)
   local W, H = D.PIN_W, btnY + (#bs > 0 and D.PIN_BTN + 4 or 0)
   f:SetSize(W, H)
-  for _, w in ipairs(f.pieces) do w.act, w.tip, w.sec, w.secDef = nil, nil, nil, nil w.bg:SetColorTexture(0, 0, 0, 0) end
+  for _, w in ipairs(f.pieces) do w.act, w.tip, w.sec, w.secDef = nil, nil, nil, nil w.hush = function() D.Hush(id, p0, l) end w.bg:SetColorTexture(0, 0, 0, 0) end
   local w = f.body
   put(f, w, 0, 0, W, H)
   K.fit(w.c, (l.hot and "! " or "") .. tostring(l[1] or ""), { 11, 10, 9 }, "accent", nil, W - 90)

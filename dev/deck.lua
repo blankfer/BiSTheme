@@ -321,27 +321,27 @@ do
   D.page = "home" D.Size(220, 300)
   local icons = {}
   for _ = 1, 40 do
-    for i = 1, count("app") do icons[find("app", i).c.text] = true end
+    for i = 1, count("app") do icons[find("app", i).tip:match("^[^%-]+")] = true end
     if not (find("appnext") and find("appnext").act) then break end
     click(find("appnext"))
   end
   local back = 0
   while find("appprev") and find("appprev").act and back < 60 do click(find("appprev")) back = back + 1 end
-  ok(back >= 3 and (D.appSkip or 0) == 0 and not find("appprev").act, "and back again by <, to the first page", back)
+  ok(back >= 1 and (D.appSkip or 0) == 0 and not find("appprev").act, "and back again by <, to the first page", back)
   D.frame.scripts.OnMouseWheel(D.frame, -1) ok((D.appSkip or 0) > 0, "the wheel turns a page")
   D.frame.scripts.OnMouseWheel(D.frame, 1) ok((D.appSkip or 0) == 0, "and back")
-  D.Size(260, 520) D.page = "home" D.Paint()
+  D.Store().sw.small = false D.Size(220, 400) D.page = "home" D.Paint()
   ok(find("find") and D.frame.find.shown and find("appinfo") and find("appinfo").a.text:find("^1 / %d"), "home: the search line on top, the page under the icons", find("appinfo") and find("appinfo").a.text)
   ok(find("find").pts[1][5] > find("card").pts[1][5], "over the cards")
   local e = D.frame.find
   e.text = "p1" e.scripts.OnTextChanged(e, true) D.Paint()
   local only = true
-  for i = 1, count("app") do if not find("app", i).c.text:lower():find("p1", 1, true) and i <= 6 then only = find("app", i).c.text end end
-  ok(only == true and count("app") >= 6 and find("app").c.text == "P1" and count("card") == 0, "typed: what is called that, no cards in its way", tostring(only))
+  for i = 1, count("app") do if not find("app", i).tip:lower():find("p1", 1, true) and i <= 6 then only = find("app", i).tip end end
+  ok(only == true and count("app") >= 6 and find("app").tip:find("^P1") and count("card") == 0, "typed: what is called that, no cards in its way", tostring(only))
   e.text = "zzzz" e.scripts.OnTextChanged(e, true) D.Paint() ok(count("app") == 0, "nothing is called that")
   e.text = "p3" e.scripts.OnTextChanged(e, true) e.scripts.OnEnterPressed(e)
   ok(D.page == "BiSMany:p3" and D.appFind == nil, "Enter opens the first", D.page)
-  click(find("back")) ok(D.frame.find.text == "" and count("app") > 1, "home again: whole")
+  click(find("back")) ok(D.frame.find.text == "" and count("app") > 1, "home again: whole") D.Store().sw.small = nil
   D.Size(220, 300)
   local ni = 0 for _ in pairs(icons) do ni = ni + 1 end
   ok(ni == #shownAppsForTest(), "the smallest deck: every icon by >", ni .. " of " .. #shownAppsForTest())
@@ -527,6 +527,38 @@ do
     D.defs["BiSLong:c"] = nil
   end
   D.page = "home" D.Paint()
+end
+-- A RIGHT-CLICK HIDES A LIVE TILE (Arn, 22 Nov: "hides it until next time it needs to say something")
+do
+  local p, words, ticks, opened = 7, "Time to eat", 0, 0
+  local cancelled, tick
+  local keepC = _G.C_Timer
+  _G.C_Timer = { NewTicker = function(_, fn) tick = fn return { Cancel = function() cancelled = true end } end, After = keepC and keepC.After }
+  D.Register{ owner = "BiSHush", key = "c", name = "Hush", order = 0.1, open = function() opened = opened + 1 end,
+    card = { prio = function() return p end, lines = function() ticks = ticks + 1 return { "XP", "", words, ticks .. " s", "gold" } end, buttons = function() return { { word = "DO", fn = function() end } } end } }
+  D.W, D.H, D.shape, D.page = 300, 700, "portrait", "home"
+  local function tile() D.Paint() for k = 1, count("card") do local w = find("card", k) if w.a.text == words or w.c.text and w.c.text:find("XP", 1, true) then return w end end end
+  local w = tile()
+  ok(w and w.hush and w.tip:find("Right%-click"), "a tile says what a right-click does")
+  w.scripts.OnClick(w, "RightButton")
+  ok(opened == 0 and not tile(), "right-clicked: hidden, and not opened")
+  ok(not tile() and D.Mine().hush["BiSHush:c"], "its number ticks on: still hidden, kept for the next login")
+  words = "Time to rest" ok(tile(), "other words: back")
+  w = tile() w.scripts.OnClick(w, "RightButton") ok(not tile(), "hidden again")
+  p = 9 ok(tile(), "more urgent: back") p = 7
+  w = tile() w.scripts.OnClick(w, "RightButton") ok(not tile(), "hidden again")
+  p = nil tick() p = 7 ok(tile(), "nothing to say, then the same again (with the phone shut): back")
+  w = tile()
+  for k = 1, count("cardbtn") do local b = find("cardbtn", k) if b.a.text == "DO" then b.scripts.OnClick(b, "RightButton") end end
+  ok(not tile(), "a right-click on its button: the same")
+  tick() ok(not tile(), "it still says the same: still hidden")
+  D.HushEnd("BiSHush:c") ok(tile(), "called back")
+  tick() ok(cancelled, "none hidden: no look")
+  D.hushTick = nil
+  for k = 1, count("app") do local x = find("app", k) if x then x.scripts.OnClick(x, "RightButton") break end end
+  ok(D.page == "home", "a right-click on an icon does nothing")
+  D.defs["BiSHush:c"] = nil
+  _G.C_Timer = keepC
 end
 -- every size, every page: it paints
 for _, page in ipairs({ "home", "switches", "BiSTools:bosses", "BiSTools:run", "BiSBroken:bad", "Nobody:here" }) do

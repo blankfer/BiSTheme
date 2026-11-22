@@ -42,7 +42,9 @@ local L = {
   ROW2 = 38, LETTER = 6, TITLE_LETTER = 9.2, KICK_LETTER = 7,      -- a row of two lines; how wide a letter is (a row's, the title's, the kicker's)
   SEARCH_H = 340,                                -- home has its search line from this height on
   GRID_ROWS = 2,                                 -- a wide home is a home screen (icons with names) when this many rows of them fit under its cards
-  APP_K = { 1.7, 1.4, 1.2 },                     -- the icons grow to the largest of these with which all of them still fit
+  -- the icons are the largest of these with which ALL of them fit; the last one is a quarter: the picture alone, its name on hover
+  -- (Arn, 22 Nov: "apps maybe 1/4 of their size? its just a button but there is room for a lot more apps there")
+  APP_SIZES = { { 105, 102, 1.7 }, { 87, 84, 1.4 }, { 74, 72, 1.2 }, { 62, 60, 1 }, { 44, 46, 0.75 }, { 36, 36, 0.6, bare = true } },
   HERO_MIN = 70, HERO_SHARE = 0.28,
   MAX_CARDS = 6,
   HIT = 24,                                      -- nothing to click is smaller than this (Arn, 22 Nov: "easy for people with accessibility")
@@ -174,23 +176,28 @@ local function nav(out, x, y, w, page, pages, room)
   if w - 2 * bw - 2 * L.GAP >= 30 then out[#out + 1] = { kind = "appinfo", i = page, n = pages, x = x + bw + L.GAP, y = y, w = w - 2 * bw - 2 * L.GAP, h = L.HIT } end
   out[#out + 1] = { kind = "appnext", i = page, n = pages, room = room, x = x + w - bw, y = y, w = bw, h = L.HIT }
 end
-local function appGrid(out, n, x, y, w, h, skip)
-  if n <= 0 or h < L.APP_H then return 0 end
-  local k, per, rows = 1, fit(99, w, L.APP_W), max(1, floor((h + L.GAP) / (L.APP_H + L.GAP)))
-  -- (bigger icons when every one of them still fits: a bigger deck is a bigger home screen - Arn, 22 Nov: "did not reframe")
-  for _, kk in ipairs(L.APP_K) do
-    local pp, rr = fit(99, w, L.APP_W * kk), floor((h + L.GAP) / (floor(L.APP_H * kk) + L.GAP))
-    if rr >= 1 and pp * rr >= n then k, per, rows = kk, pp, rr break end
+-- the smallest icon there may be (the switch "Small icons" off: the smallest that says its name)
+local function leastApp(sw) return L.APP_SIZES[#L.APP_SIZES - (on(sw, "small") and 0 or 1)] end
+--- How high all `n` icons are at their smallest, in this width.
+local function appsHigh(n, w, sw) local z = leastApp(sw) return ceil(n / fit(99, w, z[1])) * (z[2] + L.GAP) end
+local function appGrid(out, n, x, y, w, h, skip, sw)
+  local z = leastApp(sw)
+  if n <= 0 or h < z[2] then return 0 end
+  local per, rows = fit(99, w, z[1]), max(1, floor((h + L.GAP) / (z[2] + L.GAP)))
+  for _, s in ipairs(L.APP_SIZES) do
+    if s.bare and not on(sw, "small") then break end
+    local pp, rr = fit(99, w, s[1]), floor((h + L.GAP) / (s[2] + L.GAP))
+    if rr >= 1 and pp * rr >= n then z, per, rows = s, pp, rr break end
   end
-  local ah = floor(L.APP_H * k)
+  local k, ah = z[3], z[2]
   local side
   if per * rows < n then
-    local under = floor((h - L.HIT - L.GAP + L.GAP) / (L.APP_H + L.GAP))
+    local under = floor((h - L.HIT) / (ah + L.GAP))
     if under >= 1 then rows = under
     else                                                     -- (one row and no more room: < and > at its two sides)
       side = L.HIT + L.GAP
       x, w = x + side, w - 2 * side
-      per = fit(99, w, L.APP_W)
+      per = fit(99, w, z[1])
     end
   end
   local room = per * rows
@@ -198,7 +205,7 @@ local function appGrid(out, n, x, y, w, h, skip)
   local each = (w - (per - 1) * L.GAP) / per
   for i = 1, show do
     local cx, cy = (i - 1) % per, floor((i - 1) / per)
-    out[#out + 1] = { kind = "app", i = at + i, x = x + cx * (each + L.GAP), y = y + cy * (ah + L.GAP), w = each, h = ah, k = k }
+    out[#out + 1] = { kind = "app", i = at + i, x = x + cx * (each + L.GAP), y = y + cy * (ah + L.GAP), w = each, h = ah, k = k, bare = z.bare }
   end
   if side then
     out[#out + 1] = { kind = "appprev", i = page, n = pages, room = room, x = x - side, y = y, w = L.HIT, h = ah }
@@ -324,7 +331,7 @@ local function home(out, v, w, h, sw)
     local cardRows = nCards > 0 and ceil(nCards / fit(nCards, W, L.CARD_MIN_W)) or 0
     local spare = bottom - y - cardRows * (L.CARD + L.CARD_BTN + 2 * L.GAP)
     local cols, gridRows = fit(99, W, L.APP_W), floor(spare / (L.APP_H + L.GAP))
-    local grid = nApps > 0 and gridRows >= 1 and (gridRows >= L.GRID_ROWS or cols * gridRows >= nApps)
+    local grid = nApps > 0 and (gridRows >= L.GRID_ROWS or cols * gridRows >= nApps or spare >= appsHigh(nApps, W, sw))
     if nApps > 0 and W >= 360 and not grid then
       local nx = rail(out, nApps, x, y, bottom - y, v.appSkip, W >= L.RAIL_NAMES)
       W, x = W - (nx - x), nx
@@ -333,7 +340,7 @@ local function home(out, v, w, h, sw)
     if grid then
       -- (what the icons need, at least two rows of them, never more than two thirds)
       local need = ceil(nApps / fit(99, W, L.APP_W)) * (L.APP_H + L.GAP)
-      floorY = bottom - min(max(need, L.GRID_ROWS * (L.APP_H + L.GAP)), spare)
+      floorY = bottom - min(max(need, L.GRID_ROWS * (L.APP_H + L.GAP)), max(spare, 0))
     end
     if nCards > 0 then
       local per = fit(nCards, W, L.CARD_MIN_W)
@@ -354,16 +361,14 @@ local function home(out, v, w, h, sw)
       end
       y = y + used * (ch + L.GAP)
     end
-    if grid then appGrid(out, nApps, x, y + L.GAP, W, bottom - y - L.GAP, v.appSkip) end
+    if grid then appGrid(out, nApps, x, y + L.GAP, W, bottom - y - L.GAP, v.appSkip, sw) end
     return
   end
-  -- portrait: cards on top, then the icons: they get up to three rows, never less than one
-  local appsNeed = nApps > 0 and (L.APP_H + L.GAP) + (nApps > fit(99, W, L.APP_W) and L.HIT + L.GAP or 0) or 0
-  local per = fit(99, W, L.APP_W)
-  local appRows = nApps > 0 and ceil(nApps / per) or 0
-  local room = bottom - y - min(appRows, 3) * (L.APP_H + L.GAP)
-  -- (the cards may take a row or two of icons when they need it: the icons have MORE)
-  if #cards > 0 and cardsHigh((T.DeckCards(cards, W, 9999)), max(1, floor((W + L.GAP) / (106 + L.GAP)))) > room then room = bottom - y - appsNeed end
+  -- portrait: cards on top, then the icons: room for all of them small (up to a share of the deck), never less than one row
+  local least = leastApp(sw)
+  local all = nApps > 0 and appsHigh(nApps, W, sw) or 0
+  local appsNeed = nApps > 0 and least[2] + L.GAP + (all > least[2] + L.GAP and L.HIT + L.GAP or 0) or 0
+  local room = bottom - y - max(appsNeed, min(all, floor((bottom - y) * 0.6)))
   local skip = v.cardSkip or 0
   if skip >= #cards then skip = 0 end
   local list, rest, perRow = T.DeckCards(cards, W, room, skip)
@@ -388,7 +393,7 @@ local function home(out, v, w, h, sw)
     out[#out + 1] = { kind = "morecards", i = rest, n = #list, x = x, y = y, w = W, h = L.ROW }
     y = y + L.ROW + L.GAP
   end
-  appGrid(out, nApps, x, y, W, bottom - y, v.appSkip)
+  appGrid(out, nApps, x, y, W, bottom - y, v.appSkip, sw)
 end
 
 --- The right side of a page (or the bottom of a tall one): the big button over its keys, from the bottom up.

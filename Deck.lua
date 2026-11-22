@@ -382,16 +382,63 @@ function D.AppPage(by)
   return true
 end
 --- The cards that have something to say now, the most urgent first (a tie keeps its order).
+-- A RIGHT-CLICK HIDES A LIVE TILE UNTIL IT HAS SOMETHING NEW (Arn, 22 Nov: "its also instinctive if i right click a live tile it
+-- hides it until next time it needs to say something"): other words, more urgent than it was, or nothing to say and then something
+-- again. Kept per character, so a /reload does not bring it back. A pulled-out tile is the same tile (its place is kept).
+local function sig(l) return tostring(l[1]) .. "|" .. tostring(l[3]) .. "|" .. tostring(l.hot and 1 or 0) end
+function D.Hushes()
+  local m = D.Mine()
+  m.hush = type(m.hush) == "table" and m.hush or {}
+  return m.hush
+end
+function D.Hush(id, p, l)
+  D.Hushes()[id] = { sig = sig(l), p = type(p) == "number" and p or 0 }
+  D.Save()
+  D.HushWatch()
+  if D.PinsPaint then D.PinsPaint() end
+  D.Dirty(true)
+end
+function D.HushEnd(id)
+  if D.Hushes()[id] == nil then return end
+  D.Hushes()[id] = nil
+  D.Save()
+end
+function D.Hushed(id, p, l)
+  local h = D.Hushes()[id]
+  if not h then return false end
+  if type(h) ~= "table" or sig(l) ~= h.sig or (type(p) == "number" and p > (h.p or 0)) then D.HushEnd(id) return false end
+  return true
+end
+--- A hidden tile that has nothing to say is heard again when it has (also with the phone shut): one look in 30 s, only while one is hidden.
+function D.HushLook()
+  for id in pairs(D.Hushes()) do
+    local d = D.defs[id]
+    if d and d.card and not d.parked and type(D.Call(d, "prio", d.card.prio or 1, D.IsPinned and D.IsPinned(id) or nil)) ~= "number" then D.HushEnd(id) end
+  end
+end
+function D.HushWatch()
+  if D.hushTick or next(D.Hushes()) == nil or not (C_Timer and C_Timer.NewTicker) then return end
+  D.hushTick = C_Timer.NewTicker(30, function()
+    if next(D.Hushes()) == nil then
+      if D.hushTick and D.hushTick.Cancel then D.hushTick:Cancel() end
+      D.hushTick = nil
+      return
+    end
+    D.HushLook()
+  end)
+end
 function D.Cards()
   local st, out = D.Store(), {}
   for i, d in ipairs(sorted()) do
     local c = d.card
     if c and d.card and D.IsPinned and D.IsPinned(d.id) and not d.parked then
-      out[#out + 1] = { def = d, p = -0.5, i = i, slot = true, lines = { (d.name or d.key):upper(), "", "On your screen", "", "dim" }, buttons = {} }
+      local l = { (d.name or d.key):upper(), "", "On your screen", "", "dim" }
+      if not D.Hushed(d.id .. ":slot", 0, l) then out[#out + 1] = { def = d, p = -0.5, i = i, slot = true, lines = l, buttons = {} } end
     elseif c and st.apps[d.id] ~= false and D.IsLive(d) and not (c.profiles and not c.profiles[D.profile or ""]) then
       local p = D.Call(d, "prio", c.prio or 1)
       local l = type(p) == "number" and D.Call(d, "lines", c.lines) or nil
       if d.parked then out[#out + 1] = { def = d, p = -1, i = i, lines = { d.name or d.key, "", "stopped after errors", "", "dim" } }
+      elseif type(l) == "table" and D.Hushed(d.id, p, l) then    -- (hidden by a right-click)
       elseif type(l) == "table" then out[#out + 1] = { def = d, p = p, i = i, lines = l, buttons = D.Call(d, "buttons", c.buttons) or {} } end
     end
   end
@@ -438,7 +485,7 @@ D.SWITCHES = {
   -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
   { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
   { "THEME", { { "dark", "Dark", theme = true }, { "drive", "Night drive", theme = true }, { "light", "Light", theme = true }, { "contrast", "High contrast", theme = true } } },
-  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "search", "Search line" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" }, { "casts", "Cast and target buttons" } } },
+  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "search", "Search line" }, { "small", "Small icons when they do not all fit" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" }, { "casts", "Cast and target buttons" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
   { "EVERYWHERE", { { "signs", "Signal, WiFi, battery" }, { "code", "Faint code line" } } },
@@ -612,7 +659,12 @@ local function piece(parent)
     elseif self.dragId and D.PinOut then D.PinOut(self.dragId, true) end
   end)
   w:SetScript("OnDragStop", function() if D.PinDrop then D.PinDrop() end if D.WinDrop then D.WinDrop() end end)
-  w:SetScript("OnClick", function(self)
+  w:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+  w:SetScript("OnClick", function(self, b)
+    if b == "RightButton" then                              -- (a live tile: hidden until it has something new; nothing else has one)
+      if self.hush and not D.fight then D.Phone(self.hush) end
+      return
+    end
     if not self.act or D.fight then return end
     local s = self.surf or D.mainSurf
     D.On(s, self.act)
@@ -749,6 +801,7 @@ end
 function PAINT.kicker(w, o, m) fit(w.a, (m.kicker or ""):upper(), { 11, 10, 9 }, "accent", o.left and "LEFT" or "RIGHT", o.w - 4) end
 function PAINT.code(w) say(w.a, "deck " .. MINOR .. " " .. (D.profile or "?"):sub(1, 2):lower() .. " " .. math.floor(D.W) .. "x" .. math.floor(D.H) .. ((D.overN or 0) > 0 and " c" .. D.overN or ""), 9, "dim", "RIGHT") end
 function PAINT.size(w) stripe(w, "fill", "BOTTOMRIGHT", -2, 2, 14, 3, "accent") stripe(w, "fill2", "BOTTOMRIGHT", -2, 2, 3, 14, "accent") end
+function D.HushOf(c) return function() D.Hush(c.slot and c.def.id .. ":slot" or c.def.id, c.slot and 0 or c.p, c.lines or {}) end end
 function PAINT.card(w, o, m)
   local c = m.cards[o.i]
   local l = c and c.lines or {}
@@ -762,6 +815,8 @@ function PAINT.card(w, o, m)
     fit(w.a, l[3] or "", { 16, 14, 12 }, "ink", nil, o.w - 24 - (wide(w.b) or 0))
   end
   w.hot = l.hot
+  if c then w.hush = D.HushOf(c) end
+  w.tip = w.tip or "Right-click: hidden until it has something new"
   if c and not c.slot and D.PinOut then w.dragId = c.def.id end
   if c and (c.def.page or c.def.open) then w.act = function() D.Open(c.def.id) end end
 end
@@ -777,10 +832,10 @@ function PAINT.app(w, o, m)
       w.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
     if w.pic.art ~= art then w.pic.art = art w.pic:SetTexture(art) end
-    local s = o.wide and 26 or o.kind == "app" and math.floor(math.min(34 * (o.k or 1), o.h - 24)) or 34
+    local s = o.wide and 26 or o.bare and o.h - 8 or o.kind == "app" and math.floor(math.min(34 * math.max(0.75, o.k or 1), o.h - 20)) or 34
     w.pic:ClearAllPoints()
     if o.wide then w.pic:SetPoint("LEFT", w, "LEFT", 5, 0)
-    elseif o.kind == "app" then w.pic:SetPoint("TOP", w, "TOP", 0, -5)
+    elseif o.kind == "app" and not o.bare then w.pic:SetPoint("TOP", w, "TOP", 0, (o.k or 1) < 1 and -4 or -5)
     else w.pic:SetPoint("CENTER", w, "CENTER", 0, 0) end
     w.pic:SetSize(s, s)
     if w.pic.SetDesaturated then w.pic:SetDesaturated(gray) end
@@ -789,10 +844,10 @@ function PAINT.app(w, o, m)
   end
   say(w.a, art and "" or d.icon or (d.name or "?"):sub(1, 2), math.floor(15 * (o.k or 1)), gray and "dim" or "ink", "CENTER")
   local big = o.k and o.k > 1.3
-  fit(w.c, (o.kind == "app" or o.wide) and (d.name or "") or "", big and { 13, 11, 10 } or { 11, 10, 9 }, gray and "dim" or "ink2", o.wide and "LEFT" or "CENTER", o.w - (o.wide and 66 or 2))
+  fit(w.c, (o.kind == "app" and not o.bare or o.wide) and (d.name or "") or "", big and { 13, 11, 10 } or (o.k or 1) < 1 and { 10, 9, 8 } or { 11, 10, 9 }, gray and "dim" or "ink2", o.wide and "LEFT" or "CENTER", o.w - (o.wide and 66 or 2))
   local n = (state == "on" or state == "dev") and d.badge and D.Call(d, "badge", d.badge)
   if type(n) == "number" and n > 0 then say(w.b, tostring(n), 11, gray and "dim" or "gold", "RIGHT")
-  else say(w.b, o.kind == "app" and ({ off = "OFF", missing = "GET", dev = "DEV" })[state] or "", 10, "dim", "RIGHT") end   -- (a word, never the gray alone)
+  else say(w.b, o.kind == "app" and not o.bare and (o.k or 1) >= 1 and ({ off = "OFF", missing = "GET", dev = "DEV" })[state] or "", 10, "dim", "RIGHT") end   -- (a word, never the gray alone)
   w.act = function() D.Open(d.id) end
   if D.WinCan and D.WinCan(d.id) then w.dragApp = d.id end
   w.tip = (d.name or d.key) .. (({ off = " - off: what it is, and a button to turn it on", missing = " - you do not have it: what it is", dev = " - a tool of ours" })[state] or "")
@@ -1081,7 +1136,7 @@ local function words(w, o)
   elseif o.kind == "box" then
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 6, -3) w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 6, 2)
   elseif o.kind == "app" then
-    w.a:SetPoint("TOP", w, "TOP", 0, -math.floor(o.h * 0.2)) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 3) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -6, -3)
+    w.a:SetPoint("TOP", w, "TOP", 0, -math.floor(o.h * 0.2)) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 3) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", (o.k or 1) < 1 and -2 or -6, (o.k or 1) < 1 and -1 or -3)
   elseif o.kind == "railapp" and o.wide then
     w.a:SetPoint("LEFT", w, "LEFT", 4, 0) w.a:SetPoint("RIGHT", w, "LEFT", 34, 0) w.b:SetPoint("RIGHT", w, "RIGHT", -6, 0)
     w.c:SetPoint("LEFT", w, "LEFT", 40, 0) w.c:SetPoint("RIGHT", w, "RIGHT", -26, 0)
@@ -1393,7 +1448,7 @@ function D.Paint()
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
     w.act, w.tip, w.hot, w.lit, w.dragId, w.keys, w.aloud = nil, nil, nil, nil, nil, nil, nil
-    w.dragApp, w.surf, w.sec, w.secDef = nil, D.surf, nil, nil
+    w.dragApp, w.surf, w.sec, w.secDef, w.hush = nil, D.surf, nil, nil, nil
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
@@ -1446,6 +1501,7 @@ function D.Paint()
         local w = put({ kind = "cardbtn", x = o.x + 8 + (i - 1) * (each + 4), y = o.y + o.h - 24, w = each, h = 20 })
         if w.SetFrameLevel and f.GetFrameLevel then w:SetFrameLevel((f:GetFrameLevel() or 1) + 4) end
         button(w, bs[i], c.def, 12, each)
+        w.hush = D.HushOf(c)
         w:EnableMouse((w.act or w.tip) and not D.fight and true or false)
       end
     elseif o.kind == "size" then
@@ -1533,7 +1589,7 @@ function D.Focus(want)
     p:SetSize(1, 1)
     p:SetPoint("TOPLEFT", D.frame, "TOPLEFT", 0, 0)
     T.PadNav(p, { items = D.PadItems, back = D.PadBack, tabs = { prev = function() D.PadTab(-1) end, next = function() D.PadTab(1) end },
-      scroll = function(delta) D.Scroll(-(delta or 0)) end })
+      scroll = function(delta) D.Scroll(-(delta or 0)) end, alt = function(w) if w.hush and not D.fight then w.hush() end end })
     D.padFrame = p
   end
   if not p then return false end
@@ -1643,6 +1699,7 @@ for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENAB
 function D.OnEvent(event)
   if event == "PLAYER_LOGIN" then
     T.DECK_LOGIN = true
+    D.HushWatch()
     if D.Store().open then D.Show() end
     if D.PinsPaint and not D.Store().off then D.PinsPaint() end
   elseif event == "PLAYER_REGEN_DISABLED" then D.Fight(true)

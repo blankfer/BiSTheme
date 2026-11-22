@@ -67,7 +67,8 @@ end
 local function make(r)
   local b = CreateFrame("Button", nil, r, "SecureActionButtonTemplate")
   b:RegisterForClicks("AnyUp", "AnyDown")                  -- (the client's template takes the one its own setting says)
-  b:SetScript("PreClick", function(self)
+  b:SetScript("PreClick", function(self, button)
+    if button == "RightButton" then return end
     local sec = self.sec
     if not sec or fighting() then return end
     if type(sec.ok) == "function" then
@@ -79,7 +80,11 @@ local function make(r)
       end
     end
   end)
-  b:SetScript("PostClick", function(self)
+  b:SetScript("PostClick", function(self, button, down)
+    if button == "RightButton" then                         -- (on a live tile: the tile is hidden, nothing is cast)
+      if not down and self.piece and self.piece.hush and not fighting() then D.Phone(self.piece.hush) end
+      return
+    end
     if self.sec and self.def and self.key and not self.sec.peek then D.Used(self.def) end
     D.Phone(D.Dirty)
   end)

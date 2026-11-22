@@ -117,8 +117,10 @@ function D.CardRows()
     local d = x[1]
     if d.card and x[2] ~= "off" and x[2] ~= "missing" then
       local w = D.When(d)
-      out[#out + 1] = { mark = w == "off" and "-" or "v", text = d.name or d.key, right = WHEN[w], ink = w == "off" and "dim" or "good", done = w == "off", tip = WHEN_TIP[w],
-        act = { word = "next", fn = function() D.SetWhen(d, w == "use" and "news" or w == "news" and "off" or "use") end },
+      out[#out + 1] = { mark = w == "off" and "-" or "v", text = d.name or d.key, right = D.Hushes()[d.id] and "HIDDEN NOW" or WHEN[w], ink = w == "off" and "dim" or D.Hushes()[d.id] and "gold" or "good", done = w == "off",
+        tip = D.Hushes()[d.id] and "You hid it with a right-click: it comes back when it has something new. Click: now" or WHEN_TIP[w],
+        act = { word = "next", fn = function()
+          if D.Hushes()[d.id] then D.HushEnd(d.id) return end D.SetWhen(d, w == "use" and "news" or w == "news" and "off" or "use") end },
         side = { word = D.SizePick(d.id):upper(), tip = "Its size: auto, small, medium, large", fn = function()
           local at = 1
           for i, s in ipairs(D.SIZES) do if s == D.SizePick(d.id) then at = i end end

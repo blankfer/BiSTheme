@@ -76,7 +76,7 @@ for name, v in pairs(VIEWS) do
         -- EASY TO HIT (Arn, 22 Nov): 22 high and 24 wide at least, before the deck's own 1.25
         if CLICKS[b.kind] then ok(b.w >= 20 and b.h >= 22, "easy to hit: " .. b.kind, where .. " " .. b.w .. "x" .. b.h) end
         if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and (b.h == L.ROW or b.two and b.h == L.ROW2), "a row can be read", where .. " " .. b.w) end
-        if b.kind == "app" or b.kind == "railapp" then ok(b.w >= 46 and b.h >= (b.wide and 32 or 46), "an app can be clicked", where .. " " .. b.w) end
+        if b.kind == "app" or b.kind == "railapp" then ok(b.w >= (b.bare and 34 or 44) and b.h >= (b.bare and 34 or b.wide and 32 or 46), "an app can be clicked", where .. " " .. b.w) end
         if b.kind == "key" or b.kind == "tab" then ok(b.w >= 40, "a key can be clicked: " .. b.kind, where .. " " .. b.w) end
         if b.kind == "box" then ok(b.w >= 40, "a number box can be read", where .. " " .. b.w) end
       end
@@ -160,7 +160,15 @@ do
     ok(icons > 3 and names == icons, "crowded: the rail says the names at " .. z[1], names .. "/" .. icons)
   end
   v.cards = { { p = 4, lines = 0, btn = true } }
-  ok((kinds(260, 462)).app >= 6, "tall: the icons")
+  -- (Arn's 260 x 462 with three cards: "there is room for a lot more apps there")
+  v.apps, v.cards = 29, { { p = 8, lines = 3, btn = true }, { p = 5, lines = 2, btn = true }, { p = 4, lines = 0, btn = true } }
+  local all = kinds(260, 462)
+  ok(all.app == 29 and not all.appnext, "260 x 462, three cards: all 29 on one page", tostring(all.app))
+  local some = T.DeckLayout(v, 260, 462, { small = false })
+  local named, bare = 0, 0
+  for _, b in ipairs(some) do if b.kind == "app" then if b.bare then bare = bare + 1 else named = named + 1 end end end
+  ok(bare == 0 and named >= 5, "small icons off: with their names, and pages", named)
+  v.cards = {} for _, b in ipairs((T.DeckLayout(v, 300, 620))) do if b.kind == "app" then ok(not b.bare, "room enough: with their names") break end end
 end
 -- NOTHING IS CUT OFF (Arn, 22 Nov, "more stuff cut off": "Ragefire Cha..." and "FIRST TIME HE..." side by side at 260)
 do
