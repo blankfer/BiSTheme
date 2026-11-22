@@ -109,13 +109,13 @@ function D.PinPaint(id)
   for _, w in ipairs(f.pieces) do w.act, w.tip = nil, nil w.bg:SetColorTexture(0, 0, 0, 0) end
   local w = f.body
   put(f, w, 0, 0, W, H)
-  say(w.c, (l.hot and "! " or "") .. tostring(l[1] or ""), 11, "accent")
-  say(w.a, l[3] or "", 16, "ink")
+  K.fit(w.c, (l.hot and "! " or "") .. tostring(l[1] or ""), { 11, 10, 9 }, "accent", nil, W - 90)
   say(w.b, l[4] or "", 15, l[5] or "ink2", "RIGHT")
+  K.fit(w.a, l[3] or "", { 16, 14, 12, 11 }, "ink", nil, W - 26 - (K.wide(w.b) or 0))
   w.a:ClearAllPoints() w.b:ClearAllPoints() w.c:ClearAllPoints()
   w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 9, -6) w.c:SetPoint("TOPRIGHT", w, "TOPRIGHT", -78, -6)
   w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -9, -32)
-  w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 9, -31) w.a:SetPoint("TOPRIGHT", w, "TOPRIGHT", -W * 0.38, -31)
+  w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 9, -31) w.a:SetPoint("TOPRIGHT", w.b, "TOPLEFT", -6, 1)
   w.act = (def.page or def.open) and function() D.Open(id) end or nil
   local r, g, b = rgb(l.hot and "gold" or "line")
   w.bar:SetColorTexture(r, g, b, 1) w.bar:Show()

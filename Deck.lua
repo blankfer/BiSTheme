@@ -615,6 +615,25 @@ local function wrap(fs, on)
   fs:SetWordWrap(on)
 end
 
+--- How wide the words are, whatever box they stand in (nil = the client does not say).
+local function wide(fs)
+  local v = ask(fs.GetUnboundedStringWidth or fs.GetStringWidth, fs)
+  return type(v) == "number" and v or nil
+end
+--- Say it in the first of these sizes that fits the room (Arn, 22 Nov: "cut off again"): never cut while a smaller one would do.
+local function fit(fs, words, sizes, colour, justify, room)
+  local key = tostring(words) .. "|" .. sizes[1] .. "|" .. math.floor(room)
+  if fs.fitKey == key and wide(fs) then say(fs, words, fs.fitPx, colour, justify) return fs.fitPx end       -- (measured once, not at every paint)
+  local got = sizes[#sizes]
+  for _, px in ipairs(sizes) do
+    say(fs, words, px, colour, justify)
+    local v = wide(fs)
+    if not v or v <= room then got = px break end
+  end
+  fs.fitKey, fs.fitPx = key, got
+  return got
+end
+
 --- Read aloud what the mouse or the pad is on (the PC's own voice; a switch, off until asked for; never in a fight).
 function D.Speak(w)
   if D.fight or not (D.Store().easy or {}).speak then return false end
@@ -692,26 +711,22 @@ end
 function PAINT.home(w, o) stripe(w, "fill", "CENTER", 0, 0, o.w, 4, "dim", 0.6) w.act = function() D.page = "home" D.Dirty(true) end w.tip = "Home" end
 --- The title: a size down when it would be cut (the game says how wide the words are).
 function PAINT.title(w, o, m)
-  for _, px in ipairs({ 20, 17, 14 }) do
-    say(w.a, m.title or "", px, "ink")
-    local wide = ask(w.a.GetUnboundedStringWidth or w.a.GetStringWidth, w.a)
-    if type(wide) ~= "number" or wide <= o.w - 4 then break end
-  end
+  fit(w.a, m.title or "", { 20, 17, 14, 12 }, "ink", nil, o.w - 4)
 end
-function PAINT.kicker(w, o, m) say(w.a, (m.kicker or ""):upper(), 11, "accent", o.left and "LEFT" or "RIGHT") end
+function PAINT.kicker(w, o, m) fit(w.a, (m.kicker or ""):upper(), { 11, 10, 9 }, "accent", o.left and "LEFT" or "RIGHT", o.w - 4) end
 function PAINT.code(w) say(w.a, "deck " .. MINOR .. " " .. (D.profile or "?"):sub(1, 2):lower() .. " " .. math.floor(D.W) .. "x" .. math.floor(D.H), 9, "dim", "RIGHT") end
 function PAINT.size(w) stripe(w, "fill", "BOTTOMRIGHT", -2, 2, 14, 3, "accent") stripe(w, "fill2", "BOTTOMRIGHT", -2, 2, 3, 14, "accent") end
 function PAINT.card(w, o, m)
   local c = m.cards[o.i]
   local l = c and c.lines or {}
-  say(w.c, (l.hot and "! " or "") .. (l[1] or ""), 11, "accent")        -- (never by colour alone: the gold bar and a mark)
+  fit(w.c, (l.hot and "! " or "") .. (l[1] or ""), { 11, 10, 9 }, "accent", nil, o.w - (o.size == "S" and 36 or 78))        -- (never by colour alone: the gold bar and a mark)
   if o.size == "S" then
     local short = l[4] ~= nil and l[4] ~= "" and l[4] or l[3] or ""
-    say(w.a, short, 15, l[4] ~= nil and l[4] ~= "" and l[5] or "ink")
+    fit(w.a, short, { 15, 13, 11 }, l[4] ~= nil and l[4] ~= "" and l[5] or "ink", nil, o.w - 14)
     w.tip = l[3] ~= nil and l[3] ~= "" and tostring(l[1] or "") .. ": " .. tostring(l[3]) or nil
   else
-    say(w.a, l[3] or "", 16, "ink")
     say(w.b, l[4] or "", 15, l[5] or "ink2", "RIGHT")
+    fit(w.a, l[3] or "", { 16, 14, 12 }, "ink", nil, o.w - 24 - (wide(w.b) or 0))
   end
   w.hot = l.hot
   if c and not c.slot and D.PinOut then w.dragId = c.def.id end
@@ -740,7 +755,8 @@ function PAINT.app(w, o, m)
     w.pic:Show()
   end
   say(w.a, art and "" or d.icon or (d.name or "?"):sub(1, 2), math.floor(15 * (o.k or 1)), gray and "dim" or "ink", "CENTER")
-  say(w.c, (o.kind == "app" or o.wide) and (d.name or "") or "", o.k and o.k > 1.3 and 13 or 11, gray and "dim" or "ink2", o.wide and "LEFT" or "CENTER")
+  local big = o.k and o.k > 1.3
+  fit(w.c, (o.kind == "app" or o.wide) and (d.name or "") or "", big and { 13, 11, 10 } or { 11, 10, 9 }, gray and "dim" or "ink2", o.wide and "LEFT" or "CENTER", o.w - (o.wide and 66 or 2))
   local n = (state == "on" or state == "dev") and d.badge and D.Call(d, "badge", d.badge)
   if type(n) == "number" and n > 0 then say(w.b, tostring(n), 11, gray and "dim" or "gold", "RIGHT")
   else say(w.b, o.kind == "app" and ({ off = "OFF", missing = "GET", dev = "DEV" })[state] or "", 10, "dim", "RIGHT") end   -- (a word, never the gray alone)
@@ -775,17 +791,17 @@ function PAINT.dock(w, o, m)
   local d = m.dock[o.i]
   if not d then return end
   local hot = D.Call(d, "dock", d.dock.hot)
-  say(w.a, (hot and "! " or "") .. (d.dock.word or ""), 11, hot and "gold" or "ink2", "CENTER")
+  fit(w.a, (hot and "! " or "") .. (d.dock.word or ""), { 11, 10, 9 }, hot and "gold" or "ink2", "CENTER", o.w - 4)
   w.act = press(d, d.dock)
 end
 function PAINT.box(w, o, m)
   local b = m.boxes[o.i] or {}
-  say(w.c, b[1] or "", 11, "dim")
-  say(w.a, tostring(b[2] or ""), 17, b[3] or "ink")
+  fit(w.c, b[1] or "", { 11, 10, 9 }, "dim", nil, o.w - 10)
+  fit(w.a, tostring(b[2] or ""), { 17, 14, 12, 10 }, b[3] or "ink", nil, o.w - 10)
 end
 function PAINT.tab(w, o, m)
   local onTab = m.tab == o.i
-  say(w.a, m.tabs[o.i] or "", 12, onTab and "ink" or "dim", "CENTER")
+  fit(w.a, m.tabs[o.i] or "", { 12, 11, 10, 9 }, onTab and "ink" or "dim", "CENTER", o.w - 4)
   w.lit = onTab
   w.act = function() m.def.tab = o.i D.Dirty(true) end
 end
@@ -866,21 +882,21 @@ function PAINT.row(w, o, m)
   w.tip = r.tip
   w.keys = (r.less or r.more or r.side) and true or nil
 end
-local function button(w, b, def, size)
+local function button(w, b, def, size, room)
   local sec = D.IsSecure(b)
-  say(w.a, b and b.word or "", size, sec and "dim" or "ink", "CENTER")
+  fit(w.a, b and b.word or "", { size, size - 2, size - 3 }, sec and "dim" or "ink", "CENTER", (room or 999) - 6)
   w.act = press(def, b)
   w.tip = sec and "This button comes with the next step of the deck" or (b and b.tip)
 end
-function PAINT.big(w, o, m) button(w, m.big, m.def, 16) end
-function PAINT.key(w, o, m) button(w, m.keys[o.i], m.def, 12) end
+function PAINT.big(w, o, m) button(w, m.big, m.def, 16, o.w) end
+function PAINT.key(w, o, m) button(w, m.keys[o.i], m.def, 12, o.w) end
 --- The picture on top of a page. One kind so far: a RADIO - the song big, the dial with its needle, the time, bars that step once
 --- a second while it plays (never faster, none in a fight: the deck is not painted then).
 D.HERO = {}
 function D.HERO.radio(w, o, h)
   local bar, rgbx = D.Bits and D.Bits.bar, rgb
   say(w.c, h.small or "", 11, "accent")
-  say(w.a, h.big or "", 18, "ink")
+  fit(w.a, h.big or "", { 18, 15, 13 }, "ink", nil, o.w - 20)
   say(w.b, (h.left or "") .. ((h.left and h.right) and "  /  " or "") .. (h.right or ""), 11, "ink2", "RIGHT")
   if not bar then return end
   local W, H, pad = o.w, o.h, 10
@@ -906,7 +922,7 @@ end
 --- hidden is loaded again (a hidden one may lose its picture), never at every paint.
 function D.HERO.model(w, o, h)
   say(w.c, h.small or "", 11, "accent")
-  say(w.a, h.big or "", 18, "ink")
+  fit(w.a, h.big or "", { 18, 15, 13 }, "ink", nil, o.w - 20)
   say(w.b, "", 11)
   local f = D.frame
   local v = f.model
@@ -1003,7 +1019,7 @@ function PAINT.slider(w, o)
   say(w.b, o.i == 1 and (math.floor((st.scale or D.SCALE) * 100 + 0.5) .. "%") or math.floor(D.H), 12, "ink", "RIGHT")
 end
 
-D.Kit = { piece = piece, say = say, rgb = rgb }            -- (DeckPins.lua draws with the same)
+D.Kit = { piece = piece, say = say, rgb = rgb, fit = fit, wide = wide }            -- (DeckPins.lua draws with the same)
 
 --- Where a piece's words stand, by what it is.
 local function words(w, o)
@@ -1016,7 +1032,7 @@ local function words(w, o)
     -- (from the top: the kicker, the words and the number; its lines and its buttons come under them)
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 8, -5) w.c:SetPoint("TOPRIGHT", w, "TOPRIGHT", -64, -5)
     w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", -8, -24)
-    w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 8, -23) w.a:SetPoint("TOPRIGHT", w, "TOPRIGHT", -o.w * 0.38, -23)
+    w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 8, -23) w.a:SetPoint("TOPRIGHT", w.b, "TOPLEFT", -6, 1)
   elseif o.kind == "cardline" then
     w.a:SetPoint("LEFT", w, "LEFT", 0, 0) w.b:SetPoint("RIGHT", w, "RIGHT", 0, 0) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
   elseif o.kind == "box" then
@@ -1215,7 +1231,7 @@ local ROOFS = { 5, 9, 3, 7, 11, 4, 8, 3, 10, 6, 4, 9, 5, 12, 3, 7 }       -- a s
 --- The sky behind the head of the home screen, when the theme has one: bands, and roofs on the last of them. Never moves.
 function D.Sky()
   local f, th = D.frame, D.Theme()
-  if not f then return end
+  if not f or not D.W then return end                      -- (the frame is built before it has a size: Arn's login with Night drive on, 22 Nov)
   f.sky = f.sky or {}
   local want = th.sky and (D.page or "home") == "home" and th.key .. ":" .. math.floor(D.W or 0) or ""
   if f.skyIs == want then return end
@@ -1374,7 +1390,7 @@ function D.Paint()
         local each = (o.w - 16 - (k - 1) * 4) / k
         local w = put({ kind = "cardbtn", x = o.x + 8 + (i - 1) * (each + 4), y = o.y + o.h - 24, w = each, h = 20 })
         if w.SetFrameLevel and f.GetFrameLevel then w:SetFrameLevel((f:GetFrameLevel() or 1) + 4) end
-        button(w, bs[i], c.def, 12)
+        button(w, bs[i], c.def, 12, each)
         w:EnableMouse((w.act or w.tip) and not D.fight and true or false)
       end
     elseif o.kind == "size" then

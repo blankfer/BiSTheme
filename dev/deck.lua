@@ -477,6 +477,23 @@ do
   D.Paint()
   ok(find("title").a.size == 17, "a long title: a size down", find("title").a.size)
   ti.a.GetUnboundedStringWidth = nil
+  -- a live card's words have all the room the number leaves, and a size down before they are cut ("Boat to the Rivergl...")
+  do
+    D.Register{ owner = "BiSLong", key = "c", name = "Boat", order = 0.1, card = { prio = function() return 9 end, lines = function() return { "RIDES", "", "Boat to the Riverglades", "2:56", "gold" } end } }
+    D.page = "home" D.Paint()
+    local function card() for k = 1, count("card") do local w = find("card", k) if w.a.text == "Boat to the Riverglades" then return w end end end
+    local w = card()
+    ok(w and w.a.size == 16, "nothing said about widths: the everyday size", w and w.a.size)
+    local at
+    for _, q in ipairs(w.a.pts) do if q[1] == "TOPRIGHT" then at = q end end
+    ok(at and at[2] == w.b and at[3] == "TOPLEFT", "the words end where the number begins")
+    w.a.GetUnboundedStringWidth = function(self) return #self.text * self.size * 0.62 end
+    w.b.GetUnboundedStringWidth = function() return 34 end
+    D.Paint()
+    ok(card().a.size < 16, "too wide: a size down", card().a.size)
+    w.a.GetUnboundedStringWidth, w.b.GetUnboundedStringWidth = nil, nil
+    D.defs["BiSLong:c"] = nil
+  end
   D.page = "home" D.Paint()
 end
 -- every size, every page: it paints
@@ -1227,6 +1244,14 @@ ok(T.Deck == D and next(D.defs) ~= nil, "a newer copy keeps what was registered"
 old.built = 0
 D.Show()
 ok(D.frame ~= old and not old.shown, "and retires the older frame")
+-- a login with each theme kept from last time: the frame is built before it has a size
+for _, th in ipairs({ "drive", "light", "contrast", "dark" }) do
+  D.SetTheme(th)
+  D.frame.built, D.W, D.H, D.page = 0, nil, nil, "home"
+  local fine, why = pcall(D.OnEvent, "PLAYER_LOGIN")
+  if fine then fine, why = pcall(D.Show) end
+  ok(fine and D.W and D.frame.shown, "a login with the theme " .. th, why)
+end
 
 print(string.format("== deck skin %s (%d checks)", fails == 0 and "ok" or ("FAILED " .. fails), n))
 os.exit(fails == 0 and 0 or 1)
