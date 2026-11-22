@@ -529,6 +529,18 @@ do
     D.W, D.H, D.shape, D.page = W0, H0, S0, "BiSLong:p"
     D.Paint()
   end
+  -- the smallest icons say their names too, very small (Arn, 22 Nov: "small names on the new small icons")
+  do
+    local W0, H0, S0 = D.W, D.H, D.shape
+    for i = 1, 30 do D.Register{ owner = "BiSMany", key = "a" .. i, name = "Many " .. i, page = { text = function() return "x" end } } end
+    D.W, D.H, D.shape, D.page, D.appSkip = 260, 400, "portrait", "home", nil
+    D.Paint()
+    local a = find("app")
+    ok(a and a.h == 42 and a.c.text ~= "" and a.c.size <= 9, "a small icon has its name", a and a.c.text .. " " .. tostring(a.c.size) .. " " .. a.h)
+    for i = 1, 30 do D.defs["BiSMany:a" .. i] = nil end
+    D.W, D.H, D.shape, D.page = W0, H0, S0, "BiSLong:p"
+    D.Paint()
+  end
   local ti = find("title")
   ti.a.GetUnboundedStringWidth = function(self) return #self.text * self.size * 0.5 end
   D.Paint()

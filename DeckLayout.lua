@@ -42,9 +42,9 @@ local L = {
   ROW2 = 38, LINE2 = 14, ROW_LINES = 5, LETTER = 6, TITLE_LETTER = 9.2, KICK_LETTER = 7,      -- a row of two lines; how wide a letter is (a row's, the title's, the kicker's)
   SEARCH_H = 340,                                -- home has its search line from this height on
   GRID_ROWS = 2,                                 -- a wide home is a home screen (icons with names) when this many rows of them fit under its cards
-  -- the icons are the largest of these with which ALL of them fit; the last one is a quarter: the picture alone, its name on hover
-  -- (Arn, 22 Nov: "apps maybe 1/4 of their size? its just a button but there is room for a lot more apps there")
-  APP_SIZES = { { 105, 102, 1.7 }, { 87, 84, 1.4 }, { 74, 72, 1.2 }, { 62, 60, 1 }, { 44, 46, 0.75 }, { 36, 36, 0.6, bare = true } },
+  -- the icons are the largest of these with which ALL of them fit; the last one is a quarter: the picture, its name very small
+  -- (Arn, 22 Nov: "apps maybe 1/4 of their size? its just a button but there is room for a lot more apps there"; "small names on the new small icons")
+  APP_SIZES = { { 105, 102, 1.7 }, { 87, 84, 1.4 }, { 74, 72, 1.2 }, { 62, 60, 1 }, { 44, 46, 0.75 }, { 36, 42, 0.6, bare = true } },
   HERO_MIN = 70, HERO_SHARE = 0.28,
   MAX_CARDS = 6,
   HIT = 24,                                      -- nothing to click is smaller than this (Arn, 22 Nov: "easy for people with accessibility")

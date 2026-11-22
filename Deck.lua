@@ -832,10 +832,10 @@ function PAINT.app(w, o, m)
       w.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
     if w.pic.art ~= art then w.pic.art = art w.pic:SetTexture(art) end
-    local s = o.wide and 26 or o.bare and o.h - 8 or o.kind == "app" and math.floor(math.min(34 * math.max(0.75, o.k or 1), o.h - 20)) or 34
+    local s = o.wide and 26 or o.bare and o.h - 15 or o.kind == "app" and math.floor(math.min(34 * math.max(0.75, o.k or 1), o.h - 20)) or 34
     w.pic:ClearAllPoints()
     if o.wide then w.pic:SetPoint("LEFT", w, "LEFT", 5, 0)
-    elseif o.kind == "app" and not o.bare then w.pic:SetPoint("TOP", w, "TOP", 0, (o.k or 1) < 1 and -4 or -5)
+    elseif o.kind == "app" then w.pic:SetPoint("TOP", w, "TOP", 0, o.bare and -2 or (o.k or 1) < 1 and -4 or -5)
     else w.pic:SetPoint("CENTER", w, "CENTER", 0, 0) end
     w.pic:SetSize(s, s)
     if w.pic.SetDesaturated then w.pic:SetDesaturated(gray) end
@@ -844,7 +844,7 @@ function PAINT.app(w, o, m)
   end
   say(w.a, art and "" or d.icon or (d.name or "?"):sub(1, 2), math.floor(15 * (o.k or 1)), gray and "dim" or "ink", "CENTER")
   local big = o.k and o.k > 1.3
-  fit(w.c, (o.kind == "app" and not o.bare or o.wide) and (d.name or "") or "", big and { 13, 11, 10 } or (o.k or 1) < 1 and { 10, 9, 8 } or { 11, 10, 9 }, gray and "dim" or "ink2", o.wide and "LEFT" or "CENTER", o.w - (o.wide and 66 or 2))
+  fit(w.c, (o.kind == "app" or o.wide) and (d.name or "") or "", o.bare and { 9, 8, 7 } or big and { 13, 11, 10 } or (o.k or 1) < 1 and { 10, 9, 8 } or { 11, 10, 9 }, gray and "dim" or "ink2", o.wide and "LEFT" or "CENTER", o.w - (o.wide and 66 or o.bare and 0 or 2))
   local n = (state == "on" or state == "dev") and d.badge and D.Call(d, "badge", d.badge)
   if type(n) == "number" and n > 0 then say(w.b, tostring(n), 11, gray and "dim" or "gold", "RIGHT")
   else say(w.b, o.kind == "app" and not o.bare and (o.k or 1) >= 1 and ({ off = "OFF", missing = "GET", dev = "DEV" })[state] or "", 10, "dim", "RIGHT") end   -- (a word, never the gray alone)
@@ -1184,7 +1184,9 @@ local function words(w, o)
   elseif o.kind == "box" then
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 6, -3) w.a:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 6, 2)
   elseif o.kind == "app" then
-    w.a:SetPoint("TOP", w, "TOP", 0, -math.floor(o.h * 0.2)) w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 3) w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", (o.k or 1) < 1 and -2 or -6, (o.k or 1) < 1 and -1 or -3)
+    w.a:SetPoint("TOP", w, "TOP", 0, -math.floor(o.h * 0.2))
+    if o.bare then w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", -1, 2) w.c:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", 1, 2) else w.c:SetPoint("BOTTOM", w, "BOTTOM", 0, 3) end
+    w.b:SetPoint("TOPRIGHT", w, "TOPRIGHT", (o.k or 1) < 1 and -2 or -6, (o.k or 1) < 1 and -1 or -3)
   elseif o.kind == "railapp" and o.wide then
     w.a:SetPoint("LEFT", w, "LEFT", 4, 0) w.a:SetPoint("RIGHT", w, "LEFT", 34, 0) w.b:SetPoint("RIGHT", w, "RIGHT", -6, 0)
     w.c:SetPoint("LEFT", w, "LEFT", 40, 0) w.c:SetPoint("RIGHT", w, "RIGHT", -26, 0)
