@@ -154,7 +154,7 @@ local function line(w, i, x1, y1, x2, y2, thick, colour)
   l:SetStartPoint("TOPLEFT", w, x1, -y1)
   l:SetEndPoint("TOPLEFT", w, x2, -y2)
   local r, g, b = K.rgb(colour)
-  l:SetTexture("Interface\Buttons\WHITE8X8")           -- (a Line takes its colour as a tint, not as a colour texture)
+  l:SetTexture("Interface\\Buttons\\WHITE8X8")         -- (a Line takes its colour as a tint, not as a colour texture)
   l:SetVertexColor(r, g, b, 1)
   l:Show()
 end

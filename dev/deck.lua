@@ -44,6 +44,7 @@ local function node(kind, parent, template)
   function M:CreateTexture() return node("Texture", self) end
   function M:CreateFontString() return node("FontString", self) end
   function M:CreateLine() return node("Line", self) end
+  function M:SetTexture(t) if type(t) == "string" and t:find("Interface", 1, true) and not t:find("^Interface[\\/]") then error("no such texture: " .. t, 2) end self.tex = t end
   function M:SetThickness(v) if type(v) ~= "number" or v <= 0 then error("SetThickness", 2) end self.thick = v end
   function M:SetStartPoint(p, rel, x, y) if type(p) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then error("SetStartPoint", 2) end self.from = { x, y } end
   function M:SetEndPoint(p, rel, x, y) if type(p) ~= "string" or type(x) ~= "number" or type(y) ~= "number" then error("SetEndPoint", 2) end self.to = { x, y } end
