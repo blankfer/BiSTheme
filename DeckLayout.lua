@@ -39,6 +39,7 @@ local L = {
   LINE = 18, NOTE = 15, PROG = 5,
   FOOT = 24, RAIL = 60, OUT = 32,
   RAIL_WIDE = 132, RAIL_WIDE_H = 34, RAIL_NAMES = 380, RAIL_PAGE = 640,   -- the rail says the names from this width on (home; beside a page)
+  ROW2 = 38, LETTER = 6, TITLE_LETTER = 9.2, KICK_LETTER = 7,      -- a row of two lines; how wide a letter is (a row's, the title's, the kicker's)
   GRID_ROWS = 2,                                 -- a wide home is a home screen (icons with names) when this many rows of them fit under its cards
   APP_K = { 1.7, 1.4, 1.2 },                     -- the icons grow to the largest of these with which all of them still fit
   HERO_MIN = 70, HERO_SHARE = 0.28,
@@ -96,8 +97,21 @@ end
 
 --- The top of every view: clock left, x right; the kicker and the title. Answers the y under it.
 local function head(out, x, y, w, back, sw, v)
+  -- how wide the kicker is; both do not fit on one line: it goes under the title
+  local function parts(room)
+    if not (v and v.titleN) then return min(110, w * 0.36), false end
+    local kw = min(room * 0.7, (v.kickN or 0) * L.KICK_LETTER + 4)
+    return kw, v.titleN * L.TITLE_LETTER + kw + 8 > room and (v.kickN or 0) > 0
+  end
   if v and v.win then                                        -- an app out on the screen: its name, whose it is, x
-    local kw = min(110, w * 0.34)
+    local room = w - L.HIT - L.GAP
+    local kw, under = parts(room)
+    if under then
+      out[#out + 1] = { kind = "close", x = x + w - L.HIT, y = y, w = L.HIT, h = L.TITLE }
+      out[#out + 1] = { kind = "title", x = x, y = y, w = room, h = L.TITLE }
+      out[#out + 1] = { kind = "kicker", x = x, y = y + L.TITLE, w = room, h = L.KICK, left = true }
+      return y + L.TITLE + L.KICK + L.GAP
+    end
     out[#out + 1] = { kind = "close", x = x + w - L.HIT, y = y, w = L.HIT, h = L.TITLE }
     out[#out + 1] = { kind = "kicker", x = x + w - L.HIT - L.GAP - kw, y = y + (L.TITLE - L.KICK) / 2, w = kw, h = L.KICK }
     out[#out + 1] = { kind = "title", x = x, y = y, w = w - kw - L.HIT - 3 * L.GAP, h = L.TITLE }
@@ -116,7 +130,12 @@ local function head(out, x, y, w, back, sw, v)
   y = y + L.STATUS + 2
   local bw = back and L.HIT + 2 or 0
   if back then out[#out + 1] = { kind = "back", x = x, y = y, w = L.HIT, h = L.TITLE } end
-  local kw = min(110, w * 0.36)
+  local kw, under = parts(w - bw)
+  if under then
+    out[#out + 1] = { kind = "title", x = x + bw, y = y, w = w - bw, h = L.TITLE }
+    out[#out + 1] = { kind = "kicker", x = x + bw + 2, y = y + L.TITLE, w = w - bw - 2, h = L.KICK, left = true }
+    return y + L.TITLE + L.KICK + L.GAP
+  end
   out[#out + 1] = { kind = "title", x = x + bw, y = y, w = w - bw - kw - 4, h = L.TITLE }
   out[#out + 1] = { kind = "kicker", x = x + w - kw, y = y + (L.TITLE - L.KICK) / 2, w = kw, h = L.KICK }
   return y + L.TITLE + L.GAP
@@ -189,12 +208,25 @@ end
 
 --- Rows filling a band from the `skip`th on (the wheel, the pad's triggers): never past the end, so the last row is always
 --- reachable and the band is never half empty. Answers how many; a row knows how many there are over and under what shows.
-local function rowList(out, kind, n, x, y, w, h, first, skip)
-  local room = max(0, floor((h + 2) / (L.ROW + 2)))
-  local show = min(n, room)
-  skip = max(0, min(skip or 0, n - show))
+-- A ROW WHOSE WORDS DO NOT FIT IS TWO LINES HIGH (Arn, 22 Nov: "dont like how stuff is cutoff"): `lens(i)` = how many letters it
+-- says, and how much of its width its right side takes (nil = not asked, every row is one line).
+local function rowList(out, kind, n, x, y, w, h, first, skip, lens)
+  local function high(i)
+    if not lens then return L.ROW end
+    local letters, right = lens(i)
+    return (letters or 0) * L.LETTER > w - 32 - (right or 0) and L.ROW2 or L.ROW
+  end
+  local function lies(a) local k, used = 0, 0 while a + k <= n and used + high(a + k) <= h do used = used + high(a + k) + 2 k = k + 1 end return k end
+  -- never past the end: the last page starts as early as it can
+  local last, used = n + 1, 0
+  while last > 1 and used + high(last - 1) <= h do last = last - 1 used = used + high(last) + 2 end
+  skip = max(0, min(skip or 0, last - 1))
+  local show = lies(skip + 1)
+  local at = y
   for i = 1, show do
-    out[#out + 1] = { kind = kind, i = (first or 0) + skip + i, x = x, y = y + (i - 1) * (L.ROW + 2), w = w, h = L.ROW, over = skip, under_ = n - show - skip }
+    local hh = high(skip + i)
+    out[#out + 1] = { kind = kind, i = (first or 0) + skip + i, x = x, y = at, w = w, h = hh, two = hh > L.ROW or nil, over = skip, under_ = n - show - skip }
+    at = at + hh + 2
   end
   return show
 end
@@ -244,7 +276,7 @@ end
 
 local function home(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
-  local y = head(out, x, 6, W, false, sw)
+  local y = head(out, x, 6, W, false, sw, v)
   local bottom = foot(out, x, h - 5, W, sw)
   local cards = v.cards
   if type(cards) ~= "table" then
@@ -364,7 +396,7 @@ local function page(out, v, w, h, sw)
       if v.find then c:top("find", L.TAB_H) end
       if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
       if v.say and on(sw, "say") then c:bottom("say", L.SAY) end
-      rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip)
+      rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip, v.lens)
       x, W = x + lw + L.GAP * 2, W - lw - L.GAP * 2
     end
     local c = column(out, x, y, W, bottom - y)
@@ -415,7 +447,7 @@ local function page(out, v, w, h, sw)
       rowList(out, "row", min(v.rows - skip, room), x, c.y0, half, c:left(), skip)
       if v.rows - skip > room then rowList(out, "row", min(v.rows - skip - room, room), x + half + L.GAP, c.y0, half, c:left(), skip + room) end
     else
-      rowList(out, "row", v.rows, x, c.y0, W, c:left(), 0, v.skip)
+      rowList(out, "row", v.rows, x, c.y0, W, c:left(), 0, v.skip, v.lens)
     end
   end
 end
@@ -455,7 +487,7 @@ local function steps(out, v, w, h, sw)
     out[#out + 1] = { kind = "progress", x = x, y = y, w = W, h = L.PROG }
     y = y + L.PROG + L.GAP
     if list then
-      rowList(out, "step", v.steps or 0, x, y, lw, bottom - y, 0, v.skip)
+      rowList(out, "step", v.steps or 0, x, y, lw, bottom - y, 0, v.skip, v.lens)
       x, W = x + lw + 2 * L.GAP, W - lw - 2 * L.GAP
     end
     local c = column(out, x, y, W, bottom - y)
@@ -471,7 +503,7 @@ local function steps(out, v, w, h, sw)
     if room >= L.HERO_MIN then c:top("hero", min(floor(h * L.HERO_SHARE), room - L.GAP)) end
   end
   stepCard(out, c, v, sw)
-  if list and c:left() >= L.ROW then rowList(out, "step", v.steps or 0, x, c.y0, W, c:left(), 0, v.skip) end
+  if list and c:left() >= L.ROW then rowList(out, "step", v.steps or 0, x, c.y0, W, c:left(), 0, v.skip, v.lens) end
 end
 
 --- The switches: presets, a group head and its rows, the size sliders at the bottom.

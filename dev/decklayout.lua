@@ -19,6 +19,9 @@ local VIEWS = {
   homeMany = { kind = "home", cards = 12, apps = 40, dock = 9 },
   bosses = { kind = "page", boxes = 3, tabs = 2, rows = 21, keys = 2, big = true, hero = true, say = true, strip = true, apps = 12 },
   sounds = { kind = "page", find = true, boxes = 2, tabs = 3, rows = 60, keys = 2, big = true, apps = 12 },
+  long = { kind = "page", rows = 30, keys = 2, big = true, apps = 12, titleN = 14, kickN = 18, lens = function(i) return i % 3 == 0 and 60 or 8, 40 end },
+  longSteps = { kind = "steps", steps = 9, textLines = 2, titleN = 30, kickN = 18, lens = function(i) return i % 2 == 0 and 70 or 8, 40 end },
+  outLong = { kind = "page", win = true, rows = 12, titleN = 14, kickN = 18, lens = function() return 70, 0 end },
   alone = { kind = "page", find = true, boxes = 0, tabs = 2, rows = 0, keys = 0, textLines = 2, apps = 12 },
   short = { kind = "page", boxes = 0, tabs = 0, rows = 2, keys = 0, big = true, apps = 12 },
   text = { kind = "page", boxes = 4, tabs = 0, rows = 0, keys = 3, big = true, textLines = 9, hero = true, apps = 12 },
@@ -72,7 +75,7 @@ for name, v in pairs(VIEWS) do
         if b.kind == "title" then heads = heads + 1 end
         -- EASY TO HIT (Arn, 22 Nov): 22 high and 24 wide at least, before the deck's own 1.25
         if CLICKS[b.kind] then ok(b.w >= 20 and b.h >= 22, "easy to hit: " .. b.kind, where .. " " .. b.w .. "x" .. b.h) end
-        if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and b.h == L.ROW, "a row can be read", where .. " " .. b.w) end
+        if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and (b.h == L.ROW or b.two and b.h == L.ROW2), "a row can be read", where .. " " .. b.w) end
         if b.kind == "app" or b.kind == "railapp" then ok(b.w >= 46 and b.h >= (b.wide and 32 or 46), "an app can be clicked", where .. " " .. b.w) end
         if b.kind == "key" or b.kind == "tab" then ok(b.w >= 40, "a key can be clicked: " .. b.kind, where .. " " .. b.w) end
         if b.kind == "box" then ok(b.w >= 40, "a number box can be read", where .. " " .. b.w) end
@@ -159,10 +162,22 @@ do
   v.cards = { { p = 4, lines = 0, btn = true } }
   ok((kinds(260, 462)).app >= 6, "tall: the icons")
 end
+-- NOTHING IS CUT OFF (Arn, 22 Nov, "more stuff cut off": "Ragefire Cha..." and "FIRST TIME HE..." side by side at 260)
+do
+  local function at(v, w, h, kind) for _, b in ipairs((T.DeckLayout(v, w, h))) do if b.kind == kind then return b end end end
+  local ti, ki = at(VIEWS.long, 260, 462, "title"), at(VIEWS.long, 260, 462, "kicker")
+  ok(ti.w >= 14 * L.TITLE_LETTER and ki.w >= 18 * L.KICK_LETTER and ki.y >= ti.y + ti.h, "both do not fit: the kicker stands under the title, whole", ti.w .. " " .. ki.w)
+  local short = { kind = "page", rows = 2, titleN = 5, kickN = 9 }
+  ti, ki = at(short, 260, 462, "title"), at(short, 260, 462, "kicker")
+  ok(ki.y < ti.y + ti.h and ki.w >= 9 * L.KICK_LETTER, "both fit: one line")
+  local two, one = 0, 0
+  for _, b in ipairs((T.DeckLayout(VIEWS.long, 260, 462))) do if b.kind == "row" then if b.two then two = two + 1 else one = one + 1 end end end
+  ok(two >= 2 and one >= 4, "a long row: two lines; a short one: one", two .. " " .. one)
+end
 -- NOTHING IS OUT OF REACH (22 Nov: the accessibility switches did not fit, and nothing led to them): every row, step and
 -- switch comes up at some scroll, at the smallest size and the everyday one
 for _, size in ipairs({ { L.MIN_W, L.MIN_H }, { 300, 533 }, { L.MIN_LW, L.MIN_LH }, { 600, 420 }, { 560, 900 } }) do
-  for name, v in pairs({ bosses = VIEWS.bosses, full = VIEWS.full, steps = VIEWS.steps }) do
+  for name, v in pairs({ bosses = VIEWS.bosses, full = VIEWS.full, steps = VIEWS.steps, long = VIEWS.long, longSteps = VIEWS.longSteps }) do
     local seen, kind, n2 = {}, v.kind == "steps" and "step" or "row", v.kind == "steps" and v.steps or v.rows
     local any = false
     for skip = 0, n2 do

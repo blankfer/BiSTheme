@@ -690,8 +690,15 @@ local function stripe(w, key, point, x, y, wide, high, colour, a)
   t:Show()
 end
 function PAINT.home(w, o) stripe(w, "fill", "CENTER", 0, 0, o.w, 4, "dim", 0.6) w.act = function() D.page = "home" D.Dirty(true) end w.tip = "Home" end
-function PAINT.title(w, o, m) say(w.a, m.title or "", 20, "ink") end
-function PAINT.kicker(w, o, m) say(w.a, (m.kicker or ""):upper(), 11, "accent", "RIGHT") end
+--- The title: a size down when it would be cut (the game says how wide the words are).
+function PAINT.title(w, o, m)
+  for _, px in ipairs({ 20, 17, 14 }) do
+    say(w.a, m.title or "", px, "ink")
+    local wide = ask(w.a.GetUnboundedStringWidth or w.a.GetStringWidth, w.a)
+    if type(wide) ~= "number" or wide <= o.w - 4 then break end
+  end
+end
+function PAINT.kicker(w, o, m) say(w.a, (m.kicker or ""):upper(), 11, "accent", o.left and "LEFT" or "RIGHT") end
 function PAINT.code(w) say(w.a, "deck " .. MINOR .. " " .. (D.profile or "?"):sub(1, 2):lower() .. " " .. math.floor(D.W) .. "x" .. math.floor(D.H), 9, "dim", "RIGHT") end
 function PAINT.size(w) stripe(w, "fill", "BOTTOMRIGHT", -2, 2, 14, 3, "accent") stripe(w, "fill2", "BOTTOMRIGHT", -2, 2, 3, 14, "accent") end
 function PAINT.card(w, o, m)
@@ -916,11 +923,16 @@ function D.HERO.model(w, o, h)
   local key = h.display and "d" .. h.display or h.creature and "c" .. h.creature or nil
   if not key then v:Hide() f.modelKey = nil return end
   v:Show()
-  if f.modelKey ~= key then
-    f.modelKey = key
+  -- (a creature this client never met draws nothing on the first ask: asked again, a second apart, five times at most)
+  local now = GetTime and ask(GetTime) or 0
+  local again = f.modelKey == key and (f.modelTry or 9) < 5 and now - (f.modelSince or 0) >= 0.9 and (ask(v.GetModelFileID, v) or 0) == 0
+  if f.modelKey ~= key or again then
+    f.modelTry = again and f.modelTry + 1 or 0
+    f.modelKey, f.modelSince = key, now
     pcall(v.ClearModel, v)
     if h.display then pcall(v.SetDisplayInfo, v, h.display) else pcall(v.SetCreature, v, h.creature) end
   end
+  if (f.modelTry or 9) < 5 and (ask(v.GetModelFileID, v) or 0) == 0 then D.ticking = true end
 end
 function PAINT.hero(w, o, m)
   local h = m.hero
@@ -1290,6 +1302,16 @@ function D.Paint()
   local m = D.Model()
   if D.surf.id then m.view.win, m.view.apps = true, 0
   elseif m.def and D.WinCan and D.WinCan(m.def.id) and not m.about then m.view.out = true end
+  local v = m.view
+  v.titleN, v.kickN = #tostring(m.title or ""), #tostring(m.kicker or "")
+  if m.steps and v.kind == "steps" then
+    v.lens = function(i) local s = m.steps[i] return #tostring(s and s.text or ""), #tostring(s and s.phase or "") * 5.6 + 8 end
+  elseif m.rows then
+    v.lens = function(i)
+      local x = m.rows[i] or {}
+      return #tostring(x.text or ""), (x.side or x.less or x.more) and 58 or #tostring(x.right or "") * 6 + 8
+    end
+  end
   D.paints = (D.paints or 0) + 1
   D.strong = (D.Store().easy or {}).strong and true or false
   D.Sky()
@@ -1304,7 +1326,7 @@ function D.Paint()
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
-    wrap(w.a, WRAPS[o.kind] and true or false)
+    wrap(w.a, (WRAPS[o.kind] or o.two) and true or false)
     if w.pic then w.pic:Hide() end
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)

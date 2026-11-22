@@ -465,6 +465,20 @@ do
     D.page = "home" D.Paint() ok(not e.shown, "home: gone")
   end
 end
+-- nothing is cut off: the title a size down when the game says it is too wide, a long row in two lines
+do
+  D.Register{ owner = "BiSLong", key = "p", name = "Long", page = { title = function() return "A very long title indeed" end, kicker = function() return "first time here" end,
+    rows = function() return { { text = ("word "):rep(12) }, { text = "short" } } end } }
+  D.W, D.H, D.shape, D.page = 260, 462, "portrait", "BiSLong:p"
+  D.Paint()
+  ok(find("row").a.wrap and find("row").h == T.DECK_L.ROW2 and find("row", 2).h == T.DECK_L.ROW and not find("row", 2).a.wrap, "a long row: two lines")
+  local ti = find("title")
+  ti.a.GetUnboundedStringWidth = function(self) return #self.text * self.size * 0.5 end
+  D.Paint()
+  ok(find("title").a.size == 17, "a long title: a size down", find("title").a.size)
+  ti.a.GetUnboundedStringWidth = nil
+  D.page = "home" D.Paint()
+end
 -- every size, every page: it paints
 for _, page in ipairs({ "home", "switches", "BiSTools:bosses", "BiSTools:run", "BiSBroken:bad", "Nobody:here" }) do
   D.page = page
@@ -1103,6 +1117,19 @@ do
   ok(icon2("Wind").dragApp == "BiSWin:a" and not icon2("Opens").dragApp, "an app with a page can be dragged out; one that opens its own window can not")
   click(icon2("Wind"))
   ok(D.page == "BiSWin:a" and find("out") and find("model") == nil and D.frame.model and D.frame.model.shown, "an icon opens it IN the phone, with the creature's model")
+  do  -- a creature never met: asked again, not for ever
+    local mo, asks, clock, file, keepT = D.frame.model, 0, 1000, 0, _G.GetTime
+    mo.SetCreature = function() asks = asks + 1 end
+    mo.GetModelFileID = function() return file end
+    _G.GetTime = function() return clock end
+    D.frame.modelKey = nil
+    for _ = 1, 12 do clock = clock + 1 D.Paint() end
+    ok(asks == 6, "a model that does not come is asked six times, then left", asks)
+    D.frame.modelKey, asks, file = nil, 0, 77
+    for _ = 1, 5 do clock = clock + 1 D.Paint() end
+    ok(asks == 1, "one that came is not asked again", asks)
+    mo.SetCreature, mo.GetModelFileID, _G.GetTime = nil, nil, keepT
+  end
   click(find("back"))
   ok(not D.frame.model.shown, "home: no model left standing")
   -- dragged out by its icon
