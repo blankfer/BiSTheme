@@ -1614,5 +1614,23 @@ do
   D.MomentsChanged()
 end
 
+-- THE COLOUR PASS (22 Nov): a class as a name's colour, a class's circle as a row's picture
+do
+  local keepC, keepT = rawget(_G, "RAID_CLASS_COLORS"), rawget(_G, "CLASS_ICON_TCOORDS")
+  _G.RAID_CLASS_COLORS = { SHAMAN = { r = 0, g = 0.44, b = 0.87 } }
+  _G.CLASS_ICON_TCOORDS = { SHAMAN = { 0.25, 0.49, 0.25, 0.5 } }
+  local pic, co = D.ClassPic("shaman")
+  ok(pic == D.CLASS_SHEET and co[1] == 0.25 and co[4] == 0.5 and D.ClassPic("NOBODY") == nil, "a class's picture: the sheet and its corner")
+  D.Register{ owner = "BiSPaint", key = "cls", name = "Classes", order = 95, page = { title = function() return "Classes" end,
+    rows = function() return { { pic = pic, coords = co, text = "Chainheal", tint = "SHAMAN", sub = "level 60 shaman" }, { pic = 136048, text = "Plain" } } end } }
+  D.Store().apps = {}
+  D.Show() D.Flip("portrait") D.Size(300, 620) D.Open("BiSPaint:cls")
+  local r1, r2 = find("row", 1), find("row", 2)
+  ok(r1 and r1.pic.crop[1] == 0.25 and r1.a.tone == "SHAMAN" and r2.pic.crop == D.ICON_CROP, "painted: cut from the sheet, the name in the class's colour; a plain icon trimmed as before",
+    r1 and tostring(r1.a.tone))
+  _G.RAID_CLASS_COLORS, _G.CLASS_ICON_TCOORDS = keepC, keepT
+  D.page = "home"
+end
+
 print(string.format("== deck skin %s (%d checks)", fails == 0 and "ok" or ("FAILED " .. fails), n))
 os.exit(fails == 0 and 0 or 1)

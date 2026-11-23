@@ -119,10 +119,22 @@ function D.SetTheme(key)
 end
 local skin                                                -- the colours of the theme that is on (nil = the family's own)
 local function rgb(name)
+  -- a CLASS as a colour (22 Nov 2026, the colour pass: names in their class's colour, the class always said in words too)
+  local cc = type(name) == "string" and name:match("^%u+$") and RAID_CLASS_COLORS and RAID_CLASS_COLORS[name]
+  if type(cc) == "table" and type(cc.r) == "number" then return cc.r, cc.g, cc.b end
   local over = skin and skin[name]
   if T.rgb and not over then return T.rgb(name) end
   local h = over or T.hex[name] or T.hex.ink
   return tonumber(h:sub(1, 2), 16) / 255, tonumber(h:sub(3, 4), 16) / 255, tonumber(h:sub(5, 6), 16) / 255
+end
+
+D.ICON_CROP = { 0.08, 0.92, 0.08, 0.92 }                       -- art (texture coords, not a colour)
+D.CLASS_SHEET = "Interface\\TargetingFrame\\UI-Classes-Circles"
+--- A class's picture for a row: pic, coords (nil, nil when the client has no sheet for it).
+function D.ClassPic(class)
+  local co = type(class) == "string" and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[class:upper()]
+  if type(co) ~= "table" then return nil, nil end
+  return D.CLASS_SHEET, { co[1], co[2], co[3], co[4] }
 end
 
 local function plain(v) if v == nil or (issecretvalue and issecretvalue(v)) then return nil end return v end
@@ -1146,6 +1158,9 @@ function PAINT.row(w, o, m)
       w.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
     if w.pic.art ~= r.pic then w.pic.art = r.pic w.pic:SetTexture(r.pic) end
+    -- (a picture cut out of a sheet - a class's circle: r.coords; else the icon's own edge trimmed)
+    local co = type(r.coords) == "table" and r.coords or D.ICON_CROP
+    if w.pic.crop ~= co then w.pic.crop = co w.pic:SetTexCoord(co[1], co[2], co[3], co[4]) end
     w.pic:ClearAllPoints()
     w.pic:SetPoint("LEFT", w, "LEFT", 3, 0)
     w.pic:SetSize(w.sub and 28 or 18, w.sub and 28 or 18)
