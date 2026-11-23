@@ -39,7 +39,7 @@
 ]]
 BiSTheme = BiSTheme or {}
 local T = BiSTheme
-local MINOR = 1
+local MINOR = 2                                           -- 2 (23 Nov): an icon's pop-out list (b.fly)
 if (T.DECK_MINOR or 0) >= MINOR and T.DECK_READY then return end
 if not T.DeckLayout then return end                       -- the layout file goes first
 T.DECK_MINOR, T.DECK_READY = MINOR, nil
@@ -733,6 +733,7 @@ local LOOK = {                                            -- kind -> ground colo
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   icon = { "card", 1 }, hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
   cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "card", 1 }, railapp = { "card", 1 },
+  flyplate = { "line2", 1 },
 }
 
 local function text(parent, size, colour)
@@ -863,6 +864,7 @@ local function press(def, b)
   if type(b) ~= "table" then return nil end
   if type(b.fn) == "function" then
     return function()
+      D.fly = nil                                           -- (any other press puts an open pop-out away)
       D.Call(def, "button", b.fn)
       if not b.peek then D.Used(def) end
       if def ~= D.homeDef then D.Learn(def) end            -- (where you use it: the inferred cards)
@@ -1294,7 +1296,8 @@ function PAINT.icon(w, o, m)
     if w.pic.art ~= b.pic then w.pic.art = b.pic w.pic:SetTexture(b.pic) end
     w.pic:ClearAllPoints()
     w.pic:SetPoint("TOP", w, "TOP", 0, -3)
-    w.pic:SetSize(o.b and o.h - 13 or o.h - 16, o.b and o.h - 13 or o.h - 16)
+    local side = (o.b2 and o.h < 36) and o.h - 6 or o.b and o.h - 13 or o.h - 16   -- (a squeezed pop-out: the picture alone)
+    w.pic:SetSize(side, side)
     if w.pic.SetDesaturated then w.pic:SetDesaturated(false) end
     w.pic:SetAlpha(b.done and 0.45 or 1)
     w.pic:Show()
@@ -1305,12 +1308,64 @@ function PAINT.icon(w, o, m)
     say(w.c, "", 9)
   else
   say(w.a, b.pic and "" or "-", 15, "dim", "CENTER")
-  fit(w.c, b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.ink or (b.lit or b.glow) and "ink" or "ink2", "CENTER", o.w - 2)
+  fit(w.c, (o.b2 and o.h < 36) and "" or b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.ink or (b.lit or b.glow) and "ink" or "ink2", "CENTER", o.w - 2)
   end
   w.flat = b.flat
   w.act = press(m.def, b.act)
   w.tip, w.lit, w.glow = b.tip, b.lit and true or nil, b.glow
   if D.IsSecure(b.act) then w.sec, w.secDef = b.act, m.def end
+  -- A POP-OUT (Arn, 23 Nov, the game's own totem bar: "when i click bis totem make it pop out like this to select another one" -
+  -- "imbue too"): an icon with `fly` = { icon, ... } opens a column of them over itself; a press there does that one's button
+  -- and puts the column away, as does a press anywhere else or the icon again.
+  if type(b.fly) == "table" and #b.fly > 0 and not o.b2 then
+    local key = tostring(D.page or "home") .. ":" .. tostring(b.flyKey or (tostring(o.line) .. ":" .. tostring(o.i)))
+    w.sec, w.secDef = nil, nil
+    w.act = function() D.fly = D.fly ~= key and key or nil D.Dirty(true) end
+    if D.fly == key and not D.fight then
+      w.lit = true
+      D.flyAt = { o = o, list = b.fly, def = m.def }
+    end
+  end
+end
+D.FLY_GAP, D.FLY_TOP, D.FLY_FOOT, D.FLY_MIN = 2, 34, 8, 30                -- between its icons; kept clear of the status line and the foot
+--- An icon of the pop-out, made from the app's: its button puts the column away after it (a cast: once the click is done).
+local function flyItem(e)
+  local x = {}
+  for k, v in pairs(e) do x[k] = v end
+  local a = e.act
+  if type(a) == "table" then
+    local c = {}
+    for k, v in pairs(a) do c[k] = v end
+    if D.IsSecure(a) then
+      local after = a.after
+      c.after = function(...) D.fly = nil if type(after) == "function" then return after(...) end end
+    end
+    x.act = c
+  end
+  x.fly, x.b2 = nil, true
+  return x
+end
+--- The open pop-out, over everything: up from its icon when it fits (the game's way), else to the side with more room; the
+--- icons shrink to fit, never past the deck's edge.
+function D.FlyPaint(put, f)
+  local at = D.flyAt
+  local o, list = at.o, at.list
+  local n = #list
+  local gap = D.FLY_GAP
+  local roomUp, roomDown = o.y - D.FLY_TOP, D.H - D.FLY_FOOT - (o.y + o.h)
+  local up = n * (D.FLY_MIN + gap) + gap <= roomUp or roomUp >= roomDown      -- (up while its pictures stay a fair size)
+  local room = up and roomUp or roomDown
+  local h = math.max(8, math.min(o.h, math.floor((room - gap) / n) - gap))      -- (a long list: smaller, never past the edge)
+  local tall = n * (h + gap) + gap
+  local top = up and (o.y - tall) or (o.y + o.h)
+  local plate = put({ kind = "flyplate", x = o.x - 2, y = top, w = o.w + 4, h = tall })
+  plate:SetFrameLevel((f:GetFrameLevel() or 1) + 7)
+  plate:EnableMouse(true)                                   -- (a click between its icons lands on nothing behind)
+  for k = 1, n do
+    local i = up and (n - k + 1) or k                       -- (the first nearest its icon, either way)
+    local w = put({ kind = "icon", b = flyItem(list[i]), b2 = true, x = o.x, y = top + gap + (k - 1) * (h + gap), w = o.w, h = h })
+    w:SetFrameLevel((f:GetFrameLevel() or 1) + 8)
+  end
 end
 function PAINT.hero(w, o, m)
   local h = m.hero
@@ -1740,6 +1795,7 @@ function D.Paint()
   local boxes = T.DeckLayout(m.view, D.W, D.H, D.Store().sw)
   if D.surf == D.mainSurf then D.appRoom = nil end
   local n = 0
+  D.flyAt = nil
   local function put(o)
     n = n + 1
     local w = f.pieces[n]
@@ -1814,6 +1870,7 @@ function D.Paint()
       w:EnableMouse(false)                                 -- (drawn here; pressed on f.corner, D.Build)
     end
   end
+  if D.flyAt then D.FlyPaint(put, f) else D.fly = nil end   -- (its icon is gone: another page, a fight)
   for i = n + 1, #f.pieces do f.pieces[i]:Hide() end
   if f.find and f.findAt ~= D.paints then f.find:Hide() end
   if f.model and f.modelAt ~= D.paints then f.model:Hide() f.modelKey = nil end

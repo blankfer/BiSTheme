@@ -558,6 +558,62 @@ do
     D.Paint()
     for _, w in ipairs(D.frame.pieces) do if w.e1 and w:IsShown() then ok(not w.e1:IsShown(), "its extra words gone with it") end end
   end
+  -- A POP-OUT (Arn, 23 Nov, the game's totem bar: "make it pop out like this to select another one" - "imbue too")
+  do
+    local put, cast
+    local fire = { { pic = 11, word = "Searing", act = { word = "put", peek = true, fn = function() put = "Searing" end } },
+                   { pic = 12, word = "Magma", lit = true, act = { word = "put", peek = true, fn = function() put = "Magma" end } },
+                   { pic = 13, word = "Nova", act = { word = "x", spell = "Fire Nova Totem", after = function() cast = true end } } }
+    D.Register{ owner = "BiSFly", key = "p", name = "Fly", page = { tour = nil,
+      hero = function() return { art = "number", big = "32" } end,
+      rows = function() return { { text = "a" }, { text = "b" } } end,
+      icons = function() return { { { pic = 1, word = "Imbue", act = { word = "x", spell = "Rockbiter" } }, { pic = 2, word = "Fire", flyKey = "fire", fly = fire }, { pic = 3, word = "Air" } } } end } }
+    local W0, H0, S0 = D.W, D.H, D.shape
+    D.W, D.H, D.shape, D.page, D.fly = 260, 462, "portrait", "BiSFly:p", nil
+    D.Paint()
+    local function icons() local out = {} for _, w in ipairs(D.frame.pieces) do if w:IsShown() and w.kind == "icon" then out[#out + 1] = w end end return out end
+    local slot = icons()[2]
+    ok(#icons() == 3 and slot.c.text == "Fire" and not slot.sec and slot.act, "an icon with a pop-out: a press, never a cast")
+    slot.act() D.Paint()
+    local all, plate = icons(), find("flyplate")
+    ok(#all == 6 and plate and plate:IsShown() and plate.mouse, "pressed: its column, on a plate that takes the clicks", #all)
+    slot = all[2]
+    ok(slot.lit, "the icon stays lit while it is open")
+    local minY, maxY = math.huge, -math.huge
+    for k = 4, 6 do
+      local p = all[k].pts[1]
+      ok(all[k].level > slot.level, "over everything", all[k].level)
+      local y = -p[5]
+      minY, maxY = math.min(minY, y), math.max(maxY, y + all[k].h)
+    end
+    local sy = -slot.pts[1][5]
+    ok(maxY <= sy and minY >= D.FLY_TOP, "up from its icon, under the status line (the game's way)", minY .. " " .. maxY .. " " .. sy)
+    local nearest = all[6]
+    ok(nearest.pic and nearest.pic.art == 11, "the first one nearest its icon", nearest.pic and nearest.pic.art)
+    local nova
+    for k = 4, 6 do if all[k].pic and all[k].pic.art == 13 then nova = all[k] end end
+    ok(nova and nova.sec and nova.sec.spell == "Fire Nova Totem" and type(nova.sec.after) == "function", "one that casts is secure there too")
+    nova.sec.after() ok(cast and D.fly == nil, "a cast from it: its own after, and the column away")
+    D.Paint() ok(#icons() == 3, "and gone")
+    icons()[2].act() D.Paint()
+    for _, w in ipairs(icons()) do if w.pic and w.pic.art == 12 then w.act() end end
+    D.Paint()
+    ok(put == "Magma" and #icons() == 3 and not find("flyplate"), "a pick: its button, and the column away")
+    icons()[2].act() D.Paint() icons()[2].act() D.Paint()
+    ok(#icons() == 3, "the icon again: away")
+    icons()[2].act() D.Paint()
+    D.Fight(true) ok(#icons() == 3 and D.fly == nil, "a fight: away") D.Fight(false)
+    -- too many to fit above: the other way, or squeezed, never past the edge
+    for i = 4, 14 do fire[i] = { pic = 20 + i, word = "T" .. i, act = { word = "put", peek = true, fn = function() end } } end
+    D.Paint() icons()[2].act() D.Paint()
+    all = icons()
+    local lo, hi = math.huge, -math.huge
+    for k = 4, #all do local y = -all[k].pts[1][5] lo, hi = math.min(lo, y), math.max(hi, y + all[k].h) end
+    ok(#all == 3 + 14 and lo >= 0 and hi <= D.H, "fourteen: all on the deck", lo .. " " .. hi)
+    D.fly = nil
+    D.W, D.H, D.shape, D.page = W0, H0, S0, "BiSLong:p"
+    D.Paint()
+  end
   -- back goes where you came from
   do
     local inner
