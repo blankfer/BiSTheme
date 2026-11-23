@@ -1313,6 +1313,14 @@ do
   ok(icon2("Wind").dragApp == "BiSWin:a" and not icon2("Opens").dragApp, "an app with a page can be dragged out; one that opens its own window can not")
   click(icon2("Wind"))
   ok(D.page == "BiSWin:a" and find("out") and find("model") == nil and D.frame.model and D.frame.model.shown, "an icon opens it IN the phone, with the creature's model")
+  do  -- THE WIDE PHONE (Arn's shot, 22 Nov: the boss cut off at its right): a tall picture puts the model under the words, full width
+    D.Flip("landscape") D.Size(472, 462) D.Paint()
+    local hw, mo = find("hero"), D.frame.model
+    ok(hw and mo.shown and hw.h > hw.w * 0.8 and mo.w >= hw.w - 4 and mo.h <= hw.h - 40, "wide: the model as wide as the picture, under its words", hw and (hw.w .. "x" .. hw.h .. " model " .. mo.w .. "x" .. mo.h))
+    D.Flip("portrait") D.Size(300, 620) D.Paint()
+    hw = find("hero")
+    ok(mo.w < hw.w and mo.h >= hw.h - 4, "a low picture: the model at its right, the whole height, as before")
+  end
   do  -- a creature never met: asked again, not for ever
     local mo, asks, clock, file, keepT = D.frame.model, 0, 1000, 0, _G.GetTime
     mo.SetCreature = function() asks = asks + 1 end

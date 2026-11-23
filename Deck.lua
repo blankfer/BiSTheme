@@ -1225,8 +1225,16 @@ function D.HERO.model(w, o, h)
   end
   f.modelAt = D.paints
   v:ClearAllPoints()
-  v:SetPoint("TOPRIGHT", w, "TOPRIGHT", -2, -2)
-  v:SetSize(math.max(40, math.floor(o.w * 0.55)), math.max(40, o.h - 4))
+  -- A TALL PICTURE (Arn's wide-phone shot, 22 Nov: the boss cut off at its right - a box 55% wide and the whole height is
+  -- tall and thin, and the model fits its height): the model goes UNDER the words, the full width, as square as it can be
+  if o.h > o.w * 0.8 then
+    v:SetPoint("BOTTOM", w, "BOTTOM", 0, 2)
+    local side = math.max(40, math.min(o.w - 4, o.h - 44))
+    v:SetSize(math.max(40, o.w - 4), side)
+  else
+    v:SetPoint("TOPRIGHT", w, "TOPRIGHT", -2, -2)
+    v:SetSize(math.max(40, math.floor(o.w * 0.55)), math.max(40, o.h - 4))
+  end
   v:SetFrameLevel((f:GetFrameLevel() or 1) + 3)
   local key = h.display and "d" .. h.display or h.creature and "c" .. h.creature or nil
   if not key then v:Hide() f.modelKey = nil return end
