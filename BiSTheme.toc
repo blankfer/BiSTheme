@@ -10,6 +10,15 @@
 
 BiSTheme.lua
 Console.lua
+Pad.lua
+DeckLayout.lua
+Deck.lua
+DeckPins.lua
+DeckWindows.lua
+DeckOverlay.lua
+DeckStatus.lua
+DeckApps.lua
+DeckAPI.lua
 Options.lua
 Minimap.lua
 Settings.lua

@@ -755,5 +755,331 @@ do
   T.settingsRoot, T.settingsPages, T.settingsOrder = nil, {}, {}
 end
 
+-- 11. THE PAD (Pad.lua minor 1; Arn, 15 Nov: someone with only an Xbox controller drives every BiS window).
+--     The mock is shaped like the live probes on Forever measured it, inconvenient parts first:
+--       - a new frame is SHOWN; Show on a shown frame fires nothing; hiding a parent fires the children's OnHide
+--       - EnableGamePadButton + OnGamePadButtonDown exist; SetPropagateGamePadInput does NOT (calling it throws)
+--       - HookScript on a script the frame type does not have throws, as the client does
+--       - only a plain Button has Click; a Frame does not
+--       - (Un)RegisterEvent from inside a C_Timer while the pad is on = "blocked" (recorded, then thrown)
+--       - C_GamePad.IsEnabled can be off, on, or throw
+do
+  local keepCF, keepUSF = _G.CreateFrame, rawget(_G, "UISpecialFrames")
+  local keepTimer, keepICL, keepPad = rawget(_G, "C_Timer"), rawget(_G, "InCombatLockdown"), rawget(_G, "C_GamePad")
+  local padOn, padThrows, inCombat, inTimer = false, false, false, false
+  local methodCalls, regCalls, combatPadCalls, stickCalls = 0, 0, 0, 0
+  local blocked, created = {}, {}
+  _G.C_GamePad = { IsEnabled = function() if padThrows then error("no pad API here") end return padOn end }
+  _G.InCombatLockdown = function() return inCombat end
+  _G.C_Timer = { After = function(_, fn)
+    inTimer = true
+    local okT, e = pcall(fn)
+    inTimer = false
+    if not okT then error(e, 0) end
+  end }
+  _G.UISpecialFrames = {}
+  local SCRIPTS = { OnShow = true, OnHide = true, OnEnter = true, OnLeave = true, OnEvent = true,
+                    OnGamePadButtonDown = true, OnGamePadButtonUp = true, OnClick = true }
+
+  local function Region()
+    local r = { shown = true }
+    function r:SetSize(w, h) self.w, self.h = w, h end
+    function r:SetPoint(...) self.points = self.points or {} self.points[#self.points + 1] = { ... } end
+    function r:ClearAllPoints() self.points = {} end
+    function r:SetColorTexture(...) self.color = { ... } end
+    function r:Show() self.shown = true end
+    function r:Hide() self.shown = false end
+    return r
+  end
+  local function W(kind, parent)
+    local f = { kind = kind, parent = parent, shown = true, scripts = {}, children = {}, events = {},
+                padHeld = false, level = 1 }
+    local function m(name, fn) f[name] = function(...) methodCalls = methodCalls + 1 return fn(...) end end
+    local function visibleOf(x) return x.shown and (not x.parent or not x.parent.IsVisible or x.parent:IsVisible()) end
+    local function fire(x, k) if x.scripts[k] then x.scripts[k](x) end end
+    local function cascade(x, k)            -- the client tells shown children when their parent turns
+      for _, c in ipairs(x.children) do if c.shown then fire(c, k) cascade(c, k) end end
+    end
+    m("SetScript", function(s, k, fn)
+      if not SCRIPTS[k] then error(s.kind .. " doesn't have a \"" .. k .. "\" script") end
+      s.scripts[k] = fn end)
+    m("GetScript", function(s, k) return s.scripts[k] end)
+    m("HookScript", function(s, k, fn)
+      if not SCRIPTS[k] then error(s.kind .. " doesn't have a \"" .. k .. "\" script") end
+      local old = s.scripts[k]
+      s.scripts[k] = function(...) if old then old(...) end fn(...) end
+    end)
+    m("Show", function(s)
+      if s.shown then return end
+      s.shown = true
+      if visibleOf(s) then fire(s, "OnShow") cascade(s, "OnShow") end
+    end)
+    m("Hide", function(s)
+      if not s.shown then return end
+      local was = visibleOf(s)
+      s.shown = false
+      if was then fire(s, "OnHide") cascade(s, "OnHide") end
+    end)
+    m("IsShown", function(s) return s.shown end)
+    m("IsVisible", function(s) return visibleOf(s) and true or false end)
+    m("GetCenter", function(s) return s.cx, s.cy end)
+    m("IsProtected", function(s) return s.protected or false, false end)
+    m("SetFrameLevel", function(s, l) s.level = l end)
+    m("GetFrameLevel", function(s) return s.level end)
+    m("SetPoint", function(s, ...) s.points = s.points or {} s.points[#s.points + 1] = { ... } end)
+    m("ClearAllPoints", function(s) s.points = {} end)
+    m("SetSize", function(s, w, h) s.w, s.h = w, h end)
+    m("CreateTexture", function(s) local t = Region() s.textures = s.textures or {} s.textures[#s.textures + 1] = t return t end)
+    m("EnableGamePadButton", function(s, on)
+      if inCombat then combatPadCalls = combatPadCalls + 1 end
+      s.padHeld = on and true or false
+    end)
+    m("EnableGamePadStick", function() stickCalls = stickCalls + 1 end)
+    m("RegisterEvent", function(s, e)
+      regCalls = regCalls + 1
+      if inTimer and padOn then blocked[#blocked + 1] = e error("blocked") end
+      s.events[e] = true end)
+    m("UnregisterEvent", function(s, e)
+      regCalls = regCalls + 1
+      if inTimer and padOn then blocked[#blocked + 1] = e error("blocked") end
+      s.events[e] = nil end)
+    if kind == "Button" then
+      f.enabled = true
+      m("Click", function(s, button) if s.scripts.OnClick then s.scripts.OnClick(s, button) end end)
+      m("IsEnabled", function(s) return s.enabled end)
+    end
+    if parent then parent.children[#parent.children + 1] = f end
+    created[#created + 1] = f
+    return f
+  end
+  _G.CreateFrame = function(kind, _, parent) return W(kind or "Frame", parent) end
+  local function fireEv(e) for _, f in ipairs(created) do if f.events[e] and f.scripts.OnEvent then f.scripts.OnEvent(f, e) end end end
+  -- the client hands a pad button to the frame that holds the pad: answers how many got it
+  local function pad(button)
+    local got = 0
+    for _, f in ipairs(created) do
+      if f.padHeld and f:IsVisible() and f.scripts.OnGamePadButtonDown then
+        got = got + 1
+        f.scripts.OnGamePadButtonDown(f, button)
+      end
+    end
+    return got
+  end
+  local function holders()
+    local c = 0
+    for _, f in ipairs(created) do if f.padHeld then c = c + 1 end end
+    return c
+  end
+
+  local okL, why = pcall(function() assert(loadfile("Pad.lua"))() end)
+  ok(okL and T.PAD_MINOR == 1 and T.PadOn and T.EscapeCloses and T.PadNav, "Pad.lua minor 1 loads", why)
+  local regAtLoad = regCalls
+  ok(T.padEvents and T.padEvents.events.PLAYER_REGEN_ENABLED and regAtLoad == 1,
+     "one event, registered once at file load", regAtLoad)
+  local keepNavs = T.padNavs
+  assert(loadfile("Pad.lua"))()
+  ok(T.padNavs == keepNavs and regCalls == regAtLoad, "loading the same minor again is a no-op (guard)")
+
+  -- the one question
+  ok(T.PadOn() == false, "no pad: PadOn false")
+  padOn = true
+  ok(T.PadOn() == true, "pad on: PadOn true")
+  padThrows = true
+  ok(T.PadOn() == false, "C_GamePad.IsEnabled throws: false, not an error")
+  padThrows = false
+  local keepG = _G.C_GamePad _G.C_GamePad = nil
+  ok(T.PadOn() == false, "a client with no C_GamePad: false")
+  _G.C_GamePad = keepG
+
+  -- Escape's list
+  padOn = false
+  ok(T.EscapeCloses("BiSTestA") == true and UISpecialFrames[1] == "BiSTestA", "no pad: Escape closes it (listed)")
+  T.EscapeCloses("BiSTestA")
+  ok(#UISpecialFrames == 1, "never listed twice")
+  padOn = true
+  ok(T.EscapeCloses("BiSTestB") == false and #UISpecialFrames == 1, "pad in use: kept OFF UISpecialFrames")
+  ok(T.EscapeCloses(nil) == false, "no name: nothing")
+
+  -- a window of 20 buttons, 4 across and 5 down, one of them secure, one disabled
+  local win = CreateFrame("Frame", "BiSTestWin", nil)
+  win:Hide()
+  local grid, clicks = {}, {}
+  for i = 1, 20 do
+    local b = CreateFrame("Button", nil, win)
+    local col, row = (i - 1) % 4, math.floor((i - 1) / 4)
+    b.cx, b.cy, b.level, b.i = 100 + col * 50, 500 - row * 30, 3, i
+    b:SetScript("OnClick", function(s, button) clicks[#clicks + 1] = s.i .. button end)
+    b:SetScript("OnEnter", function(s) s.lit = true end)
+    b:SetScript("OnLeave", function(s) s.lit = false end)
+    grid[i] = b
+  end
+  grid[2].protected = true                               -- a secure button (a Healing cell, a disenchant)
+  grid[12].enabled = false                               -- a greyed one
+  local spec = { items = function() return grid end, tabs = {}, ran = {} }
+  spec.alt = function(it) spec.ran.alt = it end
+  spec.extra = function(it) spec.ran.extra = it end
+  spec.tabs.prev = function() spec.ran.prev = true end
+  spec.tabs.next = function() spec.ran.next = true end
+  spec.scroll = function(d) spec.ran.scroll = d end
+  local rec = T.PadNav(win, spec)
+  ok(rec and not win.padHeld and holders() == 0, "a hidden nav window holds nothing")
+  ok(not pcall(T.PadNav, win, {}), "a spec with no items is refused")
+
+  win:Show()
+  ok(win.padHeld and holders() == 1, "shown with a pad in use: it holds the pad, alone")
+  ok(pad("PADDRIGHT") == 1 and rec.focus == grid[1] and grid[1].lit, "the first press shows where you are: item 1, lit by its own hover")
+  local br = rec.bracket
+  local ar, ag, ab = T.rgb("accent")
+  ok(br and br.shown and #br.textures == 8 and br.textures[1].color[1] == ar and br.textures[1].color[3] == ab,
+     "and a thin accent bracket round it", ag)
+  ok(br.points[1][2] == grid[1] and br.level > grid[1].level, "the bracket sits on the item, above it")
+  pad("PADDRIGHT")
+  ok(rec.focus == grid[3] and not grid[1].lit, "right: the secure item 2 is skipped, item 3; item 1 let go")
+  ok(not grid[2].lit, "the secure item was never touched")
+  pad("PADDDOWN")
+  ok(rec.focus == grid[7], "down: the item below (7)", rec.focus and rec.focus.i)
+  pad("PADDLEFT")
+  ok(rec.focus == grid[6], "left: 6", rec.focus and rec.focus.i)
+  pad("PADDLEFT")
+  ok(rec.focus == grid[5], "left: 5", rec.focus and rec.focus.i)
+  pad("PADDUP")
+  ok(rec.focus == grid[1], "up: 1", rec.focus and rec.focus.i)
+  pad("PADDUP")
+  ok(rec.focus == grid[1], "up at the top edge: stays, no wrap")
+  pad("PADDDOWN") pad("PADDDOWN") pad("PADDRIGHT") pad("PADDRIGHT")
+  ok(rec.focus == grid[11], "down, down, right, right: 11", rec.focus and rec.focus.i)
+  pad("PADDRIGHT")
+  ok(rec.focus ~= grid[12] and rec.focus.cx == 250, "right again: the greyed 12 is skipped, the nearest in column 4",
+     rec.focus and rec.focus.i)
+  for _ = 1, 3 do pad("PADDUP") end
+  for _ = 1, 3 do pad("PADDLEFT") end
+  ok(rec.focus == grid[1], "back to 1", rec.focus and rec.focus.i)
+  pad("PAD1")
+  ok(clicks[#clicks] == "1LeftButton" and #clicks == 1, "A clicks it, as a left click")
+  pad("PAD3")
+  ok(spec.ran.alt == grid[1], "X: the right-click meaning, on the focused item")
+  pad("PAD4")
+  ok(spec.ran.extra == grid[1], "Y: the shift-click meaning")
+  pad("PADLTRIGGER")
+  ok(spec.ran.scroll == 1, "LT scrolls up")
+  pad("PADRSHOULDER")
+  ok(spec.ran.next and rec.focus == nil and not grid[1].lit and not br.shown, "RB: the next tab, focus let go")
+  pad("PAD1")
+  ok(#clicks == 1 and rec.focus == grid[1], "A with nothing focused finds the first item, never clicks blind")
+  ok(pad("PADFORWARD") == 1 and #clicks == 1, "Start: not ours, nothing happens")
+  pad("PAD2")
+  ok(not win.shown and holders() == 0, "B: the default back hides the window, and nothing holds the pad")
+  ok(rec.focus == nil and not grid[1].lit, "the focus let go when it hid")
+  ok(pad("PADDDOWN") == 0, "nothing of ours hears the pad now")
+  ok(stickCalls == 0 and win.SetPropagateGamePadInput == nil, "the sticks are never asked for")
+
+  -- THE STACK: a second window on top takes the pad, closing it hands it back
+  win:Show()
+  local win2 = CreateFrame("Frame", "BiSTestWin2", nil)
+  local only = CreateFrame("Button", nil, win2)
+  only.cx, only.cy = 300, 300
+  local backed = 0
+  local rec2 = T.PadNav(win2, { items = function() return { only } end, back = function() backed = backed + 1 end })
+  ok(win2.padHeld and not win.padHeld and holders() == 1, "a nav window already shown at PadNav: on top, it holds the pad")
+  pad("PADDDOWN")
+  ok(rec2.focus == only and rec.focus == nil, "presses go to the top window only")
+  pad("PAD2")
+  ok(backed == 1 and win2.shown, "B runs the window's own back (a card steps back first)")
+  win2:Hide()
+  ok(win.padHeld and not win2.padHeld and holders() == 1, "closing it hands the pad back to the one under it")
+  win2:Show()
+  ok(win2.padHeld and holders() == 1, "shown again: on top again")
+  win:Hide() win:Show()
+  ok(win.padHeld and not win2.padHeld, "the newest shown is on top")
+  -- a parent hiding hides its nav windows too (the client cascades OnHide; Alt+Z hides UIParent)
+  local ui = CreateFrame("Frame", "UIParentish", nil)
+  local win3 = CreateFrame("Frame", "BiSTestWin3", ui)
+  T.PadNav(win3, { items = function() return {} end })
+  ok(win3.padHeld, "a window under a parent: holds")
+  ui:Hide()
+  ok(not win3.padHeld and win.padHeld, "the parent hides: the next one down takes the pad")
+  ui:Show()
+  ok(win3.padHeld, "the parent comes back: it holds again")
+  win3:Hide() win2:Hide() win:Hide()
+  ok(holders() == 0, "none shown: no BiS frame holds the pad")
+
+  -- no pad in use: nothing is held, nothing is heard
+  padOn = false
+  win:Show()
+  ok(holders() == 0 and pad("PADDDOWN") == 0, "no pad: a nav window holds nothing")
+  win:Hide()
+  padOn = true
+
+  -- IN A FIGHT: who holds the pad never changes mid-fight (unprobed); it waits for the fight to end
+  inCombat = true
+  win:Show()
+  ok(combatPadCalls == 0 and not win.padHeld and T.padPending, "opened in a fight: no EnableGamePadButton, it waits")
+  ok(pad("PADDDOWN") == 0, "and nothing of ours holds the pad meanwhile")
+  inCombat = false
+  fireEv("PLAYER_REGEN_ENABLED")
+  ok(win.padHeld and not T.padPending, "after the fight it takes the pad")
+  inCombat = true
+  win2:Show()
+  ok(combatPadCalls == 0 and win.padHeld and not win2.padHeld, "a second window in a fight: the holder is left alone")
+  ok(pad("PADDDOWN") == 1 and rec.focus == nil, "and the one behind ignores the pad - it is not on top")
+  inCombat = false
+  fireEv("PLAYER_REGEN_ENABLED")
+  ok(win2.padHeld and not win.padHeld, "after the fight the top one holds it")
+  win2:Hide() win:Hide()
+
+  -- NOTHING TOUCHES EVENTS FROM A TIMER (Forever: "blocked" while the gamepad UI is on)
+  win:Show() win2:Show()
+  C_Timer.After(0, function() win2:Hide() win:Hide() win:Show() win:Hide() end)
+  ok(#blocked == 0 and regCalls == regAtLoad, "windows shown and hidden from a timer: no event (un)registered, nothing blocked")
+  ok(holders() == 0, "and the stack still comes out right")
+  local fh = assert(io.open("Pad.lua"))
+  local code = (fh:read("*a"):gsub("%-%-%[%[.-%]%]", ""):gsub("%-%-[^\n]*", ""))
+  fh:close()
+  ok(not code:find("C_Timer", 1, true) and not code:find("NewTicker", 1, true), "Pad.lua itself starts no timer")
+  ok(not code:find("UnregisterEvent", 1, true), "and never unregisters anything")
+  ok(not code:find("SetPropagateGamePadInput", 1, true) and not code:find("EnableGamePadStick", 1, true),
+     "and never asks for what Forever lacks or the sticks")
+
+  -- LEAN: idle = nothing; one press over the 20-item window stays small
+  local Cost = dofile("../_bisdev/dev/cost.lua")
+  local everyFrame = 0
+  for _, f in ipairs(created) do if f.scripts.OnUpdate then everyFrame = everyFrame + 1 end end
+  ok(everyFrame == 0, "no frame of the pad runs every frame")
+  win:Show()
+  local idle, by = Cost.Count(function()
+    fireEv("PLAYER_REGEN_ENABLED") fireEv("PLAYER_REGEN_ENABLED")
+  end)
+  ok(idle == 0, "at rest (a window open, fights ending): the pad asks the client nothing: " .. idle, Cost.Top(by, 3))
+  pad("PADDDOWN")                                         -- focus the first item
+  local before = methodCalls
+  local asked, by2 = Cost.Count(function() pad("PADDDOWN") end)
+  local widget = methodCalls - before
+  ok(asked == 0, "one D-pad press asks the client's globals nothing: " .. asked, Cost.Top(by2, 3))
+  ok(widget <= 5 * 20 + 25, "one D-pad press over 20 items: a handful of widget calls each: " .. widget)
+  local shows
+  asked, shows = Cost.Count(function() win:Hide() win:Show() end)
+  ok(asked <= 4, "a show and a hide ask the client at most 4 things (pad on? in a fight?): " .. asked, Cost.Top(shows, 3))
+  win:Hide()
+
+  -- EMBEDDED ALONE: the file is the only kit file an addon ships - the bracket is still BiS purple
+  local mainT = T
+  BiSTheme = nil
+  assert(loadfile("Pad.lua"))()
+  local T2 = BiSTheme
+  ok(T2 ~= mainT and T2.PAD_MINOR == 1 and not T2.rgb, "Pad.lua alone loads with no palette")
+  local w4 = CreateFrame("Frame", "BiSTestWin4", nil)
+  local b4 = CreateFrame("Button", nil, w4)
+  b4.cx, b4.cy = 10, 10
+  T2.PadNav(w4, { items = function() return { b4 } end })
+  pad("PADDUP")
+  local c4 = T2.padNavs[w4].bracket.textures[1].color
+  ok(math.abs(c4[1] - 0xb9 / 255) < 1e-6 and math.abs(c4[3] - 1) < 1e-6, "and its bracket falls back to BiS purple")
+  w4:Hide()
+  BiSTheme = mainT
+
+  _G.CreateFrame, _G.UISpecialFrames, _G.C_Timer, _G.InCombatLockdown, _G.C_GamePad =
+    keepCF, keepUSF, keepTimer, keepICL, keepPad
+end
+
 if fails > 0 then error(fails .. " failed of " .. n) end
 print("ALL OK (" .. n .. " checks)")
