@@ -555,7 +555,7 @@ function D.Model()
       local lines = {}
       for i, l in ipairs(m.icons or {}) do lines[i] = #l end
       local iconRows = 0
-      for _, r in ipairs(m.rows) do if type(r) == "table" and r.icons then iconRows = iconRows + 1 end end
+      for _, r in ipairs(m.rows) do if type(r) == "table" and r.icons and not r.low then iconRows = iconRows + 1 end end
       if p.tick then D.ticking = true end
       m.say = p.say and D.Call(d, "say", p.say, m.tab) or nil
       m.view = { kind = "page", find = m.find and true or nil, boxes = #m.boxes, tabs = #m.tabs, rows = #m.rows, keys = #m.keys, big = m.big and true or nil,
@@ -1151,7 +1151,7 @@ function D.HERO.number(w, o, h)
   w.e1:Show()
 end
 --- A line of icons (page.icons = fn(tab) -> { { icon, ... }, { icon, ... } }, icon = { pic, word = its small name, act = button, lit,
---- glow = a colour of its own over it, ink, tip }): each a picture with its name under it; a press does its button.
+--- glow = a colour of its own over it (soft = only a breath of it), flat = a word and no picture, ink, tip }): each a picture with its name under it; a press does its button.
 function PAINT.icon(w, o, m)
   local b = o.b or m.icons[o.line] and m.icons[o.line][o.i] or {}
   if b.pic then
@@ -1167,8 +1167,15 @@ function PAINT.icon(w, o, m)
     w.pic:SetAlpha(b.done and 0.45 or 1)
     w.pic:Show()
   end
+  w.soft = b.soft
+  if b.flat then
+    fit(w.a, b.word or "", { 12, 11, 10, 9 }, b.ink or "ink", "CENTER", o.w - 4)
+    say(w.c, "", 9)
+  else
   say(w.a, b.pic and "" or "-", 15, "dim", "CENTER")
   fit(w.c, b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.ink or (b.lit or b.glow) and "ink" or "ink2", "CENTER", o.w - 2)
+  end
+  w.flat = b.flat
   w.act = press(m.def, b.act)
   w.tip, w.lit, w.glow = b.tip, b.lit and true or nil, b.glow
   if D.IsSecure(b.act) then w.sec, w.secDef = b.act, m.def end
@@ -1288,7 +1295,7 @@ local function words(w, o)
   elseif o.kind == "switch" or o.kind == "slider" or o.kind == "stephead" then
     w.a:SetPoint("LEFT", w, "LEFT", o.kind == "stephead" and 0 or 8, 0) w.b:SetPoint("RIGHT", w, "RIGHT", o.kind == "stephead" and 0 or -8, 0)
   elseif o.kind == "icon" then
-    w.a:SetPoint("TOP", w, "TOP", 0, -10)
+    if w.flat then w.a:SetPoint("CENTER", w, "CENTER", 0, 0) else w.a:SetPoint("TOP", w, "TOP", 0, -10) end
     w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 0, o.b and 1 or 3) w.c:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", 0, o.b and 1 or 3)
   elseif o.kind == "hero" and w.heroArt == "number" then
     w.c:SetPoint("TOPLEFT", w, "TOPLEFT", 10, -6)
@@ -1590,7 +1597,7 @@ function D.Paint()
     v.lens = function(i)
       local x = m.rows[i] or {}
       local verb, moved = D.Verb(x)
-      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or verb and math.min(90, #verb * 6.4 + 18) or 0) + (moved and 0 or #tostring(x.right or "") * 6) + 8, x.icons and "icons" or x.sub and true or nil
+      return #tostring(x.text or ""), ((x.side or x.less or x.more) and 52 or verb and math.min(90, #verb * 6.4 + 18) or 0) + (moved and 0 or #tostring(x.right or "") * 6) + 8, x.icons and (x.low and "low" or "icons") or x.sub and true or nil
     end
   end
   D.paints = (D.paints or 0) + 1
@@ -1616,7 +1623,7 @@ function D.Paint()
     if w.pic then w.pic:Hide() end
     if w.v then w.v:Hide() w.vb:Hide() end
     if w.e1 then w.e1:Hide() end
-    w.chip, w.tips, w.heroArt, w.picOn, w.glow = nil, nil, nil, nil, nil
+    w.chip, w.tips, w.heroArt, w.picOn, w.glow, w.soft, w.flat = nil, nil, nil, nil, nil, nil, nil
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)
     w:SetSize(o.w, o.h)
@@ -1629,10 +1636,10 @@ function D.Paint()
     if fn then fn(w, o, m) end
     for _, fs in ipairs({ w.a, w.b, w.c }) do if not fs.hit then say(fs, "", 12) end end      -- (what it said for another box)
     words(w, o)
-    local bar = w.hot and "gold" or (w.lit and "accent") or w.glow or nil
+    local bar = w.hot and "gold" or (w.lit and "accent") or (not w.soft and w.glow) or nil
     if bar then w.bar:SetColorTexture(rgb(bar)) w.bar:Show() else w.bar:Hide() end
     if w.lit then local r, g, b = rgb("accentSoft") w.bg:SetColorTexture(r, g, b, 1)
-    elseif w.glow then local r, g, b = rgb(w.glow) w.bg:SetColorTexture(r, g, b, 0.30) end
+    elseif w.glow then local r, g, b = rgb(w.glow) w.bg:SetColorTexture(r, g, b, w.soft and 0.16 or 0.34) end
     w:EnableMouse((CLICK[o.kind] and (w.act or w.tip) and not D.fight) and true or false)
     w.wash:Hide()
     w:Show()
