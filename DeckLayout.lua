@@ -455,8 +455,14 @@ end
 --- The sizes of the number, the lines and the rows of icons with which the page stands in `room` (`more` = what else is in it).
 local function iconFit(v, room, more)
   if not (v.icons or v.iconRows or v.number) then return L.ICON_FITS[2] end
-  local ir = v.iconRows or 0
-  local rows = min(2, max(0, (v.rows or 0) - ir)) * (L.ROW + 2)            -- (of a longer list its icons and two rows; the rest rolls)
+  local ir, _ = v.iconRows or 0
+  local rows, n = 0, 0                                                     -- (of a longer list its icons and three rows; the rest rolls)
+  for i = 1, v.rows or 0 do
+    if n == 3 then break end
+    local under
+    if v.lens then _, _, under = v.lens(i) end
+    if under ~= "icons" then n, rows = n + 1, rows + (under and L.ROW2 or L.ROW) + 2 end
+  end
   for _, z in ipairs(L.ICON_FITS) do
     if (v.number and z[1] + L.GAP or 0) + #(v.icons or {}) * (z[2] + L.GAP) + ir * (z[3] + 2) + rows + more <= room then return z end
   end
@@ -482,7 +488,7 @@ local function page(out, v, w, h, sw)
       if v.find then c:top("find", L.TAB_H) end
       if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
       if v.say and on(sw, "say") then c:bottom("say", sayHigh(v, lw)) end
-      rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip, v.lens, iconFit({ rows = v.rows, iconRows = v.iconRows }, c:left(), 0)[3])
+      rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip, v.lens, iconFit({ rows = v.rows, iconRows = v.iconRows, lens = v.lens }, c:left(), 0)[3])
       x, W = x + lw + L.GAP * 2, W - lw - L.GAP * 2
     end
     local c = column(out, x, y, W, bottom - y)

@@ -83,7 +83,7 @@ D.FONT = "Fonts\\ARIALN.TTF"
 -- the deck's black and its card, and any name an older palette lacks (a name T.rgb does not know would come out as ink)
 T.hex = T.hex or {}
 for k, v in pairs({ ground = "08060d", card = "151020", sunken = "221d3c", line = "2a2446", line2 = "3a3260", ink = "ece8f6", ink2 = "c6bedd",
-  dim = "8e86a6", accent = "b980ff", accentSoft = "2c2148", good = "4fd0cf", gold = "e5c04a", warn = "f08cb0" }) do
+  dim = "8e86a6", accent = "b980ff", accentSoft = "2c2148", good = "4fd0cf", gold = "e5c04a", warn = "f08cb0", red = "ff6b5a", rare = "5fa8f0" }) do
   if not T.hex[k] then T.hex[k] = v end
 end
 -- THE THEMES (Arn, 22 Nov: "Let's make Ryan gosling mode a mode you have to turn on theme , I like the clean style that you did
@@ -1151,7 +1151,7 @@ function D.HERO.number(w, o, h)
   w.e1:Show()
 end
 --- A line of icons (page.icons = fn(tab) -> { { icon, ... }, { icon, ... } }, icon = { pic, word = its small name, act = button, lit,
---- tip }): each a picture with its name under it; a press does its button.
+--- glow = a colour of its own over it, ink, tip }): each a picture with its name under it; a press does its button.
 function PAINT.icon(w, o, m)
   local b = o.b or m.icons[o.line] and m.icons[o.line][o.i] or {}
   if b.pic then
@@ -1168,9 +1168,9 @@ function PAINT.icon(w, o, m)
     w.pic:Show()
   end
   say(w.a, b.pic and "" or "-", 15, "dim", "CENTER")
-  fit(w.c, b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.lit and "ink" or "ink2", "CENTER", o.w - 2)
+  fit(w.c, b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.ink or (b.lit or b.glow) and "ink" or "ink2", "CENTER", o.w - 2)
   w.act = press(m.def, b.act)
-  w.tip, w.lit = b.tip, b.lit and true or nil
+  w.tip, w.lit, w.glow = b.tip, b.lit and true or nil, b.glow
   if D.IsSecure(b.act) then w.sec, w.secDef = b.act, m.def end
 end
 function PAINT.hero(w, o, m)
@@ -1616,7 +1616,7 @@ function D.Paint()
     if w.pic then w.pic:Hide() end
     if w.v then w.v:Hide() w.vb:Hide() end
     if w.e1 then w.e1:Hide() end
-    w.chip, w.tips, w.heroArt, w.picOn = nil, nil, nil, nil
+    w.chip, w.tips, w.heroArt, w.picOn, w.glow = nil, nil, nil, nil, nil
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)
     w:SetSize(o.w, o.h)
@@ -1629,9 +1629,10 @@ function D.Paint()
     if fn then fn(w, o, m) end
     for _, fs in ipairs({ w.a, w.b, w.c }) do if not fs.hit then say(fs, "", 12) end end      -- (what it said for another box)
     words(w, o)
-    local bar = w.hot and "gold" or (w.lit and "accent") or nil
+    local bar = w.hot and "gold" or (w.lit and "accent") or w.glow or nil
     if bar then w.bar:SetColorTexture(rgb(bar)) w.bar:Show() else w.bar:Hide() end
-    if w.lit then local r, g, b = rgb("accentSoft") w.bg:SetColorTexture(r, g, b, 1) end
+    if w.lit then local r, g, b = rgb("accentSoft") w.bg:SetColorTexture(r, g, b, 1)
+    elseif w.glow then local r, g, b = rgb(w.glow) w.bg:SetColorTexture(r, g, b, 0.30) end
     w:EnableMouse((CLICK[o.kind] and (w.act or w.tip) and not D.fight) and true or false)
     w.wash:Hide()
     w:Show()
