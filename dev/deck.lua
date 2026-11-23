@@ -558,6 +558,22 @@ do
     D.Paint()
     for _, w in ipairs(D.frame.pieces) do if w.e1 and w:IsShown() then ok(not w.e1:IsShown(), "its extra words gone with it") end end
   end
+  -- back goes where you came from
+  do
+    local inner
+    for _, k in ipairs({ "a", "b" }) do D.Register{ owner = "BiSBack", key = k, name = k, page = { tabs = function() return { "X", "Y" } end, rows = function() if inner then return { { mark = "<", text = "Back", act = { word = "back", peek = true, fn = function() inner = nil end } } } end return { { text = "x" } } end } } end
+    D.page = "home" D.Open("BiSBack:a") D.defs["BiSBack:a"].tab = 2
+    D.Open("BiSBack:b")
+    inner = true D.Paint()
+    click(find("back")) ok(D.page == "BiSBack:b" and not inner, "a page inside the app first")
+    click(find("back")) ok(D.page == "BiSBack:a" and D.defs["BiSBack:a"].tab == 2, "then the app that opened it, on its tab", D.page)
+    click(find("back")) ok(D.page == "home" and #D.trail == 0, "then home")
+    D.Open("BiSBack:a") D.Open("BiSBack:b") D.Open("BiSBack:a")
+    ok(#D.trail == 1, "there and back by a button is no ring", #D.trail)
+    D.PadBack() D.PadBack() ok(D.page == "home", "the pad's B the same")
+    D.Open("BiSBack:a") D.Open("BiSBack:b") click(find("home")) ok(D.page == "home" and #D.trail == 0, "the home bar: home at once")
+    D.page = "BiSLong:p" D.Paint()
+  end
   -- the smallest icons say their names too, very small (Arn, 22 Nov: "small names on the new small icons")
   do
     local W0, H0, S0 = D.W, D.H, D.shape

@@ -39,7 +39,7 @@ local L = {
   LINE = 18, NOTE = 15, PROG = 5,
   FOOT = 24, RAIL = 60, OUT = 32,
   RAIL_WIDE = 132, RAIL_WIDE_H = 34, RAIL_NAMES = 380, RAIL_PAGE = 640,   -- the rail says the names from this width on (home; beside a page)
-  ROW2 = 38, LINE2 = 14, ROW_LINES = 5, LETTER = 6, TITLE_LETTER = 9.2, KICK_LETTER = 7,      -- a row of two lines; how wide a letter is (a row's, the title's, the kicker's)
+  ROW2 = 38, LINE2 = 14, ROW_LINES = 5, LETTER = 5.4, TITLE_LETTER = 9.2, KICK_LETTER = 7,      -- a row of two lines; how wide a letter is (a row's, the title's, the kicker's)
   SEARCH_H = 340,                                -- home has its search line from this height on
   GRID_ROWS = 2,                                 -- a wide home is a home screen (icons with names) when this many rows of them fit under its cards
   -- the icons are the largest of these with which ALL of them fit; the last one is a quarter: the picture, its name very small

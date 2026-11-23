@@ -788,7 +788,36 @@ function PAINT.out(w, o, m)
 end
 function PAINT.shape(w) say(w.a, T.DeckShape(D.W, D.H) == "portrait" and "[ ]" or "|", 11, "ink2", "CENTER") w.act = function() D.Flip() end w.tip = "Tall / wide" end
 function PAINT.gear(w) say(w.a, "*", 14, "ink2", "CENTER") w.act = function() D.page = (D.page == "switches") and "home" or "switches" D.Dirty(true) end w.tip = "Switches and size" end
-function PAINT.back(w) say(w.a, "<", 15, "accent", "CENTER") w.act = function() D.page = "home" D.Dirty(true) end end
+--- BACK GOES WHERE YOU CAME FROM (Arn, 22 Nov, Combo > Totems: "why from this page if i press back it sends me to the home screen"):
+--- a page inside an app (its first row is "<") first, then the app that opened this one, then home.
+D.trail = D.trail or {}
+function D.Back()
+  if D.surf ~= D.mainSurf then return D.Phone(D.Back) end
+  local def = D.defs[D.page or ""]
+  if def and def.page then
+    local rows = D.Model().rows
+    local r = type(rows) == "table" and rows[1]
+    if type(r) == "table" and r.mark == "<" and type(r.act) == "table" and r.act.word == "back" then
+      D.Call(def, "back", r.act.fn)
+      D.Dirty(true)
+      return "inside"
+    end
+  end
+  while #D.trail > 0 do
+    local t = table.remove(D.trail)
+    local d = D.defs[t.id]
+    if d and d.page and not d.parked and t.id ~= D.page then
+      if t.tab then d.tab = t.tab end
+      D.page = t.id
+      D.Dirty(true)
+      return t.id
+    end
+  end
+  D.page = "home"
+  D.Dirty(true)
+  return "home"
+end
+function PAINT.back(w) say(w.a, "<", 15, "accent", "CENTER") w.act = function() D.Back() end w.tip = #D.trail > 0 and "Back" or nil end
 --- A thin drawn bar on a piece whose click area is bigger than it looks (the home bar, the corner, the progress).
 local function stripe(w, key, point, x, y, wide, high, colour, a)
   local t = w[key]
@@ -800,7 +829,7 @@ local function stripe(w, key, point, x, y, wide, high, colour, a)
   t:SetColorTexture(r, g, b, a or 1)
   t:Show()
 end
-function PAINT.home(w, o) stripe(w, "fill", "CENTER", 0, 0, o.w, 4, "dim", 0.6) w.act = function() D.page = "home" D.Dirty(true) end w.tip = "Home" end
+function PAINT.home(w, o) stripe(w, "fill", "CENTER", 0, 0, o.w, 4, "dim", 0.6) w.act = function() D.trail = {} D.page = "home" D.Dirty(true) end w.tip = "Home" end
 --- The title: a size down when it would be cut (the game says how wide the words are).
 function PAINT.title(w, o, m)
   fit(w.a, m.title or "", { 20, 17, 14, 12 }, "ink", nil, o.w - 4)
@@ -855,7 +884,7 @@ function PAINT.app(w, o, m)
   local n = (state == "on" or state == "dev") and d.badge and D.Call(d, "badge", d.badge)
   if type(n) == "number" and n > 0 then say(w.b, tostring(n), 11, gray and "dim" or "gold", "RIGHT")
   else say(w.b, o.kind == "app" and not o.bare and (o.k or 1) >= 1 and ({ off = "OFF", missing = "GET", dev = "DEV" })[state] or "", 10, "dim", "RIGHT") end   -- (a word, never the gray alone)
-  w.act = function() D.Open(d.id) end
+  w.act = function() D.trail = {} D.page = D.page ~= d.id and "home" or D.page D.Open(d.id) end      -- (from an icon: an app of its own, not the next one of a trail)
   if D.WinCan and D.WinCan(d.id) then w.dragApp = d.id end
   w.tip = (d.name or d.key) .. (({ off = " - off: what it is, and a button to turn it on", missing = " - you do not have it: what it is", dev = " - a tool of ours" })[state] or "")
 end
@@ -1702,7 +1731,7 @@ function D.PadItems()
   for _, w in ipairs(D.frame and D.frame.pieces or {}) do if w:IsShown() and w.act then out[#out + 1] = w end end
   return out
 end
-function D.PadBack() if (D.page or "home") ~= "home" then D.page = "home" D.Dirty(true) else D.Focus(false) end end
+function D.PadBack() if (D.page or "home") ~= "home" then D.Back() else D.Focus(false) end end
 function D.PadTab(by)
   local m = D.Model()
   local def = m.def
@@ -1763,6 +1792,13 @@ function D.Open(id)
     return true
   end
   if not (d.page or d.about) then return false end
+  local was = D.page or "home"
+  if was == "home" then D.trail = {}
+  elseif was ~= id and D.defs[was] then
+    for i, t in ipairs(D.trail) do if t.id == id then for k = #D.trail, i, -1 do table.remove(D.trail, k) end break end end
+    D.trail[#D.trail + 1] = { id = was, tab = D.defs[was].tab }
+    if #D.trail > 8 then table.remove(D.trail, 1) end
+  end
   D.page = id
   D.appFind = nil                                          -- (found: home is whole again when you come back)
   D.Show()
