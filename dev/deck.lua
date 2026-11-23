@@ -95,7 +95,7 @@ local function click(w) w.scripts.OnClick(w) end
 
 function shownAppsForTest() local out = {} for _, d in pairs(D.defs) do if d.page and not d.parked or (d.page and d.parked) then out[#out + 1] = d end end return out end
 -- before the login only data: no frame
-local saveA, saveB = {}, { deck = { at = 50, open = false, portrait = { w = 300, h = 520 }, sw = { hero = false } } }
+local saveA, saveB = {}, { deck = { at = 50, open = false, portrait = { w = 300, h = 520 }, sw = { hero = false, guess = false } } }   -- (guess: the inferred cards, tested on their own at the end)
 local stepsDone = { true, false, false }
 local rows = {}
 for i = 1, 30 do rows[i] = { text = "Boss " .. i, right = i == 2 and "FOUND" or "", ink = "gold", mark = tostring(i), act = { word = "go", fn = function() rows.hit = i end } } end
@@ -828,7 +828,7 @@ do
       rows = function() return { { text = "Magra", act = { word = "farm", fn = function() mob = "Magra" end } }, { text = "Look", act = { word = "look", peek = true, fn = function() fired.look = true end } } } end,
       keys = function() return { { word = "NOTHING", fn = function() end } } end } }
   local def = D.defs["BiSFarm:farm"]
-  D.Store().apps = {} D.SetTheme("dark") D.page = "home" D.Show() D.Flip("portrait") D.Size(300, 700)
+  D.Store().apps = {} D.Store().sw.guess = false D.SetTheme("dark") D.page = "home" D.Show() D.Flip("portrait") D.Size(300, 700)
   local function card(title) for i = 1, count("card") do local w = find("card", i) if w.c.text and w.c.text:find(title, 1, true) then return w end end end
   ok(not card("FARM"), "never opened: no card")
   D.Open("BiSFarm:farm") click(find("tab", 2)) click(find("tab", 1)) click(find("row", 2))
@@ -1510,6 +1510,100 @@ for _, th in ipairs({ "drive", "light", "contrast", "dark" }) do
   local fine, why = pcall(D.OnEvent, "PLAYER_LOGIN")
   if fine then fine, why = pcall(D.Show) end
   ok(fine and D.W and D.frame.shown, "a login with the theme " .. th, why)
+end
+
+-- WHERE YOU USE IT (Arn, 22 Nov: "build infrastructure that infers when it should pop stuff out so i dont have to go through
+-- every single one of them"): the deck learns which app you use in which place and brings its card there by itself
+do
+  local t = 5000
+  local keepT, keepDead, keepGroup = _G.GetTime, _G.UnitIsDeadOrGhost, _G.IsInGroup
+  _G.GetTime = function() return t end
+  local dead = false
+  _G.UnitIsDeadOrGhost = function() return dead end
+  _G.IsInGroup = function() return false end
+  D.Store().sw.guess = nil
+  D.Store().apps = {}
+  D.Mine().habits, D.Mine().hush = {}, {}
+  D.foughtAt, D.diedAt = nil, nil                         -- (earlier checks fought on another clock)
+  D.Register{ owner = "BiSShop", key = "vendor", name = "Vendor", order = 90, page = { title = function() return "Vendor" end, rows = function() return {} end } }
+  local news = false
+  D.Register{ owner = "BiSShop", key = "bank", name = "Bank", order = 91, page = { title = function() return "Bank" end, rows = function() return {} end },
+    card = { when = "use", prio = function(out) return (news or out) and 4 or nil end, lines = function() return { "BANK", "", "12 slots free", "", "ink2" } end,
+      buttons = function() return { { word = "SORT", fn = function() end } } end } }
+  local vendor, bank = D.defs["BiSShop:vendor"], D.defs["BiSShop:bank"]
+  local function guessed(id) for _, c in ipairs(D.Cards()) do if c.def.id == id then return c end end end
+  GAME.inside, GAME.kind, GAME.resting = false, "none", true
+  D.MomentsChanged()
+  ok(D.Moments().town and not D.Moments().dungeon, "in town: the deck knows")
+  ok(not guessed("BiSShop:vendor"), "never used: no card")
+  D.Open("BiSShop:vendor") D.Open("BiSShop:vendor")
+  ok((D.Habits()["BiSShop:vendor"].n or 0) == 1, "opened twice in a minute: one use")
+  for _ = 1, 2 do t = t + 61 D.Open("BiSShop:vendor") end
+  local c = guessed("BiSShop:vendor")
+  ok(c and c.guess == "town" and c.p == D.GUESS_PRIO and c.lines[3] == "You use it in town" and c.buttons[1].word == "OPEN", "used three times in town: its card comes in town, with OPEN", c and c.lines[3])
+  GAME.resting = false
+  D.OnEvent("PLAYER_UPDATE_RESTING")
+  ok(not guessed("BiSShop:vendor"), "out of town: gone")
+  GAME.resting = true
+  D.OnEvent("PLAYER_UPDATE_RESTING")
+  ok(guessed("BiSShop:vendor"), "back in town: back")
+  -- an app with a card of its own: its own words, asked as if pulled out
+  for _ = 1, 3 do t = t + 61 D.Open("BiSShop:bank") end
+  c = guessed("BiSShop:bank")
+  ok(c and c.guess == "town" and c.lines[3] == "12 slots free" and c.buttons[1].word == "SORT", "a card of its own: its own words and buttons", c and c.lines[3])
+  news = true
+  t = t + 61 D.Press(bank, { word = "SORT", fn = function() end })()
+  c = guessed("BiSShop:bank")
+  ok(c and not c.guess and c.p == 4, "when it has news of its own, that card - not a guess")
+  news = false
+  D.EndLive(bank)
+  -- x: not here, and it learns
+  c = guessed("BiSShop:vendor")
+  D.HushOf(c)()
+  ok(not guessed("BiSShop:vendor") and (D.Habits()["BiSShop:vendor"].town or 0) < D.GUESS_MIN, "x: gone, and town no longer counts for it")
+  -- used everywhere: never guessed (it is not about a place)
+  GAME.resting = false D.OnEvent("PLAYER_UPDATE_RESTING")
+  D.Mine().habits["BiSShop:vendor"], D.Mine().hush = nil, {}
+  for i = 1, 6 do t = t + 61 GAME.resting = i % 2 == 0 D.MomentsChanged() D.Open("BiSShop:vendor") end
+  GAME.resting = true D.MomentsChanged()
+  ok(not guessed("BiSShop:vendor"), "used half in town, half out: no guess (60% of its uses must be there)")
+  -- an app says where it belongs; the moments after dying and after a fight
+  D.Register{ owner = "BiSShop", key = "grave", name = "Grave", order = 92, page = { title = function() return "Grave" end, rows = function() return {} end },
+    card = { moments = { died = true }, prio = function(out) return out and 2 or nil end, lines = function() return { "GRAVE", "", "Run back", "", "ink2" } end } }
+  ok(not guessed("BiSShop:grave"), "alive: nothing")
+  dead = true D.OnEvent("PLAYER_DEAD")
+  ok(D.Moments().dead and D.Moments().died and guessed("BiSShop:grave"), "you died: the card that says it belongs there comes")
+  dead = false D.OnEvent("PLAYER_ALIVE")
+  t = t + D.AFTER_DEATH + 1
+  ok(not D.Moments().died and not guessed("BiSShop:grave"), "two minutes later: gone by itself")
+  D.OnEvent("PLAYER_REGEN_ENABLED")
+  ok(D.Moments().fought, "just after a fight")
+  t = t + D.AFTER_FIGHT + 1
+  ok(not D.Moments().fought, "and thirty seconds later not")
+  -- lean: where you are is asked on the deck's events; a paint only reads it
+  do
+    local Cost = dofile("../_bisdev/dev/cost.lua")
+    D.MomentsChanged() D.Moments()
+    local nc = Cost.Count(function() for _ = 1, 10 do D.Guess(vendor) D.Guess(bank) end end)
+    print(("   cost: 20 guesses between events = %d calls"):format(nc))
+    ok(nc <= 40, "20 guesses between events: the clock and who you are, nothing else", nc)
+  end
+  -- the switch, and its row on the switches page
+  D.Store().sw.guess = false
+  t = t + 61 dead = true D.OnEvent("PLAYER_DEAD")
+  ok(not guessed("BiSShop:grave"), "the switch off: no guessed cards")
+  dead = false
+  local row
+  for _, g in ipairs(D.SWITCHES) do for _, x in ipairs(g[2]) do if x[1] == "guess" then row = x end end end
+  ok(row and row[2] == "Cards where you use them", "its switch: HOME, Cards where you use them")
+  -- the client hides an answer: no error
+  _G.IsResting = function() error("hidden") end
+  D.MomentsChanged()
+  ok(pcall(D.Moments) and not D.Moments().town, "a refused question: not there, no error")
+  _G.IsResting = function() return GAME.resting end
+  _G.GetTime, _G.UnitIsDeadOrGhost, _G.IsInGroup = keepT, keepDead, keepGroup
+  GAME.resting = false
+  D.MomentsChanged()
 end
 
 print(string.format("== deck skin %s (%d checks)", fails == 0 and "ok" or ("FAILED " .. fails), n))

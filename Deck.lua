@@ -427,10 +427,106 @@ function D.HushWatch()
     D.HushLook()
   end)
 end
+--[[ WHERE YOU ARE, AND WHAT YOU USE THERE (22 Nov 2026, Arn: "build infrastructure that infers when it should pop stuff out so i
+  dont have to go through every single one of them").
+  MOMENTS: a few things the client says plainly - in town, a dungeon, a raid, a battleground, dead, in a group, on a flight, just
+  after a fight, just after dying - asked again only on the deck's own rare events (and the two "just after" by the clock).
+  LEARNED: opening an app or pressing something in it gives that app a tally in every moment you are in (per character, once a
+  minute an app, halved when it grows big). INFERRED: in a moment where an app is mostly used - D.GUESS_MIN uses there and
+  D.GUESS_SHARE of its uses - its card comes by itself, quietly (D.GUESS_PRIO, under every card with news). An app with no card
+  of its own gets a plain one with OPEN. A right-click hides it, and takes from its tally there: it learns "not here".
+  An app may also say where it belongs: card.moments = { town = true }. The switch: HOME "Cards where you use them". ]]
+D.GUESS_MIN, D.GUESS_SHARE, D.GUESS_PRIO, D.GUESS_GAP, D.GUESS_CAP = 3, 0.6, 1.5, 60, 60
+D.AFTER_FIGHT, D.AFTER_DEATH = 30, 120
+local function inst() local i, k = ask(IsInInstance) return i == true and k or nil end
+D.MOMENTS = {
+  { key = "town", name = "in town", test = function() return ask(IsResting) == true end },
+  { key = "dungeon", name = "in a dungeon", test = function() return inst() == "party" end },
+  { key = "raid", name = "in a raid", test = function() return inst() == "raid" end },
+  { key = "pvp", name = "in a battleground", test = function() local k = inst() return k == "pvp" or k == "arena" end },
+  { key = "dead", name = "dead", test = function() return ask(UnitIsDeadOrGhost, "player") == true end },
+  { key = "group", name = "in a group", test = function() return ask(IsInGroup) == true end },
+  { key = "flight", name = "on a flight", test = function() return ask(UnitOnTaxi, "player") == true end },
+  { key = "fought", name = "after a fight", test = function() return D.foughtAt ~= nil and (ask(GetTime) or 0) - D.foughtAt < D.AFTER_FIGHT end },
+  { key = "died", name = "after dying", test = function() return D.diedAt ~= nil and (ask(GetTime) or 0) - D.diedAt < D.AFTER_DEATH end },
+}
+--- The moments you are in now: { key = true }. Kept until an event (or a "just after" running out) asks again.
+function D.Moments()
+  local t = ask(GetTime) or 0
+  if D.momentsNow and not (D.momentsTill and t >= D.momentsTill) then return D.momentsNow end
+  local now, till = {}, nil
+  for _, m in ipairs(D.MOMENTS) do
+    local fine, yes = pcall(m.test)
+    if fine and yes then now[m.key] = true end
+  end
+  if now.fought then till = D.foughtAt + D.AFTER_FIGHT end
+  if now.died then local d = D.diedAt + D.AFTER_DEATH till = till and math.min(till, d) or d end
+  D.momentsNow, D.momentsTill = now, till
+  return now
+end
+function D.MomentsChanged() D.momentsNow = nil end
+function D.MomentName(key) for _, m in ipairs(D.MOMENTS) do if m.key == key then return m.name end end return key end
+function D.Habits()
+  local m = D.Mine()
+  m.habits = type(m.habits) == "table" and m.habits or {}
+  return m.habits
+end
+--- You used this app here: a tally in each moment you are in (once per D.GUESS_GAP seconds an app).
+function D.Learn(def)
+  if not (def and def.id and D.defs[def.id] == def) or def == D.homeDef or D.fight then return false end
+  local t = ask(GetTime) or 0
+  D.learnedAt = D.learnedAt or {}
+  if D.learnedAt[def.id] and t - D.learnedAt[def.id] < D.GUESS_GAP then return false end
+  D.learnedAt[def.id] = t
+  local all = D.Habits()
+  local h = type(all[def.id]) == "table" and all[def.id] or { n = 0 }
+  all[def.id] = h
+  h.n = (h.n or 0) + 1
+  for k in pairs(D.Moments()) do h[k] = (h[k] or 0) + 1 end
+  if h.n > D.GUESS_CAP then for k, v in pairs(h) do if type(v) == "number" then h[k] = math.floor(v / 2) end end end
+  return true
+end
+--- "Not here": a right-click on a guessed card takes its tally there down to under the line.
+function D.Unlearn(id, key)
+  local h = D.Habits()[id]
+  if type(h) == "table" and key then h[key] = math.min(h[key] or 0, D.GUESS_MIN - 1) - 1 if h[key] <= 0 then h[key] = nil end end
+end
+--- The moment this app belongs to now, if any: said by the app, or learned from you.
+function D.Guess(def)
+  local sw = D.Store().sw
+  if (sw and sw.guess == false) or not def or def.hidden or def.dev or (D.State and D.State(def) ~= "on") then return nil end
+  local now = D.Moments()
+  local said = def.card and type(def.card.moments) == "table" and def.card.moments
+  if said then for k in pairs(said) do if now[k] then return k, true end end end
+  local h = D.Habits()[def.id]
+  if type(h) ~= "table" or (h.n or 0) < D.GUESS_MIN then return nil end
+  local best, bv
+  for k in pairs(now) do
+    local v = h[k] or 0
+    if k ~= "group" or not now.dungeon then                 -- (in a dungeon, "in a group" says nothing more)
+      if v >= D.GUESS_MIN and v / h.n >= D.GUESS_SHARE and (not bv or v > bv) then best, bv = k, v end
+    end
+  end
+  return best
+end
+--- A guessed card's words: the app's own (asked as if pulled out), else its name and why it is here.
+local function guessCard(d, key, i)
+  local c = d.card
+  local l, b
+  if c then
+    local p = D.Call(d, "prio", c.prio or 1, true)
+    if type(p) == "number" then l = D.Call(d, "lines", c.lines, true) b = D.Call(d, "buttons", c.buttons) end
+  end
+  if type(l) ~= "table" then l = { (d.name or d.key):upper(), "", "You use it " .. D.MomentName(key), "", "dim" } end
+  if type(b) ~= "table" or #b == 0 then b = { { word = "OPEN", peek = true, fn = function() D.Open(d.id) end } } end
+  return { def = d, p = D.GUESS_PRIO, i = i, lines = l, buttons = b, guess = key }
+end
+
 function D.Cards()
-  local st, out = D.Store(), {}
+  local st, out, seen = D.Store(), {}, {}
   for i, d in ipairs(sorted()) do
     local c = d.card
+    if c and D.IsPinned and D.IsPinned(d.id) then seen[d.id] = true end
     if c and d.card and D.IsPinned and D.IsPinned(d.id) and not d.parked then
       local l = { (d.name or d.key):upper(), "", "On your screen", "", "dim" }
       if not D.Hushed(d.id .. ":slot", 0, l) then out[#out + 1] = { def = d, p = -0.5, i = i, slot = true, lines = l, buttons = {} } end
@@ -438,8 +534,16 @@ function D.Cards()
       local p = D.Call(d, "prio", c.prio or 1)
       local l = type(p) == "number" and D.Call(d, "lines", c.lines) or nil
       if d.parked then out[#out + 1] = { def = d, p = -1, i = i, lines = { d.name or d.key, "", "stopped after errors", "", "dim" } }
-      elseif type(l) == "table" and D.Hushed(d.id, p, l) then    -- (hidden by a right-click)
-      elseif type(l) == "table" then out[#out + 1] = { def = d, p = p, i = i, lines = l, buttons = D.Call(d, "buttons", c.buttons) or {} } end
+      elseif type(l) == "table" and D.Hushed(d.id, p, l) then seen[d.id] = true   -- (hidden by a right-click)
+      elseif type(l) == "table" then out[#out + 1] = { def = d, p = p, i = i, lines = l, buttons = D.Call(d, "buttons", c.buttons) or {} } seen[d.id] = true end
+      if d.parked then seen[d.id] = true end
+    end
+    if not seen[d.id] and not d.parked and st.apps[d.id] ~= false and not (D.IsPinned and D.IsPinned(d.id)) and not (c and D.When(d) == "off") then
+      local key = D.Guess(d)                                 -- (nothing of its own to say now: is this where you use it?)
+      if key then
+        local g = guessCard(d, key, i)
+        if not D.Hushed(d.id, g.p, g.lines) then out[#out + 1] = g end
+      end
     end
   end
   table.sort(out, function(a, b) if a.p ~= b.p then return a.p > b.p end return a.i < b.i end)
@@ -485,7 +589,7 @@ D.SWITCHES = {
   -- EASIER TO USE (Arn, 22 Nov: "let's make it easy for people with accessibility and gamepad support"): off until asked for
   { "EASIER TO USE", { { "speak", "Read aloud", easy = true }, { "strong", "Stronger words", easy = true } } },
   { "THEME", { { "dark", "Dark", theme = true }, { "drive", "Night drive", theme = true }, { "light", "Light", theme = true }, { "contrast", "High contrast", theme = true } } },
-  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "search", "Search line" }, { "small", "Small icons when they do not all fit" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" }, { "casts", "Cast and target buttons" } } },
+  { "HOME", { { "cards", "Live cards" }, { "apps", "App icons" }, { "search", "Search line" }, { "small", "Small icons when they do not all fit" }, { "dock", "Dock" }, { "missing", "Addons you do not have" }, { "pinfight", "Pinned cards in a fight" }, { "guess", "Cards where you use them" }, { "casts", "Cast and target buttons" } } },
   { "PAGES", { { "hero", "Pictures" }, { "boxes", "Number boxes" }, { "tabs", "Tabs" }, { "strip", "Progress strip" }, { "say", "Last action line" }, { "keys", "Small buttons" } } },
   { "STEPS", { { "list", "Step list" } } },
   { "EVERYWHERE", { { "signs", "Signal, WiFi, battery" }, { "code", "Faint code line" } } },
@@ -498,7 +602,7 @@ function D.Model()
   m.apps = shownApps()
   if m.page == "home" then
     m.cards, m.dock = D.Cards(), dockList()
-    for _, c in ipairs(m.cards) do if c.def.card.tick and not c.slot then D.ticking = true end end
+    for _, c in ipairs(m.cards) do if c.def.card and c.def.card.tick and not c.slot then D.ticking = true end end
     if (D.cardSkip or 0) >= #m.cards then D.cardSkip = nil end
     local found = D.Find(D.appFind)                          -- (typed: what is called that, nothing else in its way)
     if found then m.apps, m.cards = found, {} end
@@ -749,6 +853,7 @@ local function press(def, b)
     return function()
       D.Call(def, "button", b.fn)
       if not b.peek then D.Used(def) end
+      if def ~= D.homeDef then D.Learn(def) end            -- (where you use it: the inferred cards)
       if D.PinsPaint then D.PinsPaint() end
       D.Dirty(true)
     end
@@ -837,7 +942,7 @@ end
 function PAINT.kicker(w, o, m) fit(w.a, (m.kicker or ""):upper(), { 11, 10, 9 }, "accent", o.left and "LEFT" or "RIGHT", o.w - 4) end
 function PAINT.code(w) say(w.a, "deck " .. MINOR .. " " .. (D.profile or "?"):sub(1, 2):lower() .. " " .. math.floor(D.W) .. "x" .. math.floor(D.H) .. ((D.overN or 0) > 0 and " c" .. D.overN or ""), 9, "dim", "RIGHT") end
 function PAINT.size(w) stripe(w, "fill", "BOTTOMRIGHT", -2, 2, 14, 3, "accent") stripe(w, "fill2", "BOTTOMRIGHT", -2, 2, 3, 14, "accent") end
-function D.HushOf(c) return function() D.Hush(c.slot and c.def.id .. ":slot" or c.def.id, c.slot and 0 or c.p, c.lines or {}) end end
+function D.HushOf(c) return function() if c.guess then D.Unlearn(c.def.id, c.guess) end D.Hush(c.slot and c.def.id .. ":slot" or c.def.id, c.slot and 0 or c.p, c.lines or {}) end end
 function PAINT.card(w, o, m)
   local c = m.cards[o.i]
   local l = c and c.lines or {}
@@ -853,7 +958,7 @@ function PAINT.card(w, o, m)
   w.hot = l.hot
   if c then w.hush = D.HushOf(c) end
   w.tip = w.tip or "Right-click: hidden until it has something new"
-  if c and not c.slot and D.PinOut then w.dragId = c.def.id end
+  if c and not c.slot and D.PinOut and c.def.card then w.dragId = c.def.id end
   if c and (c.def.page or c.def.open) then w.act = function() D.Open(c.def.id) end end
 end
 function PAINT.app(w, o, m)
@@ -1572,12 +1677,14 @@ function D.CardKeys(put, o, m, f)
   end
   if o.size == "S" then
     -- (half a row: only x, and only where x means something; a drag still pulls it out, a click opens it)
-    if not c.slot and D.When(c.def) == "use" then key("cardend", "x", 24, function() D.EndLive(c.def) end, "Done with it") end
+    if c.guess then key("cardend", "x", 24, D.HushOf(c), "Not here: it learns")
+    elseif not c.slot and D.When(c.def) == "use" then key("cardend", "x", 24, function() D.EndLive(c.def) end, "Done with it") end
     return
   end
   if c.slot then return key("cardout", "BACK", 40, function() D.PinBack(c.def.id) end, "Back into the deck") end
-  if D.When(c.def) == "use" then key("cardend", "x", 24, function() D.EndLive(c.def) end, "Done with it") end
-  key("cardout", "OUT", 30, function() D.PinOut(c.def.id) end, "Onto your screen (or drag the card there)")
+  if c.guess then key("cardend", "x", 24, D.HushOf(c), "Not here: it learns")      -- (a guessed card: x = "not here")
+  elseif D.When(c.def) == "use" then key("cardend", "x", 24, function() D.EndLive(c.def) end, "Done with it") end
+  if c.def.card then key("cardout", "OUT", 30, function() D.PinOut(c.def.id) end, "Onto your screen (or drag the card there)") end
 end
 
 --- Draw the deck: the model, its layout, a piece for each box.
@@ -1812,6 +1919,7 @@ function D.Open(id)
     if #D.trail > 8 then table.remove(D.trail, 1) end
   end
   D.page = id
+  D.Learn(d)                                               -- (opened here: a tally for this place - the inferred cards)
   D.appFind = nil                                          -- (found: home is whole again when you come back)
   D.Show()
   D.Dirty(true)
@@ -1877,8 +1985,12 @@ end
 local ev = D.events or CreateFrame("Frame")
 D.events = ev
 for _, e in ipairs({ "PLAYER_LOGIN", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "PLAYER_ENTERING_WORLD", "ZONE_CHANGED_NEW_AREA",
-  "PLAYER_UPDATE_RESTING", "GROUP_ROSTER_UPDATE", "PLAYER_LOGOUT" }) do pcall(ev.RegisterEvent, ev, e) end
+  "PLAYER_UPDATE_RESTING", "GROUP_ROSTER_UPDATE", "PLAYER_LOGOUT", "PLAYER_DEAD", "PLAYER_ALIVE", "PLAYER_UNGHOST",
+  "PLAYER_CONTROL_LOST", "PLAYER_CONTROL_GAINED" }) do pcall(ev.RegisterEvent, ev, e) end
 function D.OnEvent(event)
+  D.MomentsChanged()                                       -- (every one of these may change where you are: asked again on the next look)
+  if event == "PLAYER_DEAD" then D.diedAt = ask(GetTime) end
+  if event == "PLAYER_REGEN_ENABLED" then D.foughtAt = ask(GetTime) end
   if event == "PLAYER_LOGIN" then
     T.DECK_LOGIN = true
     D.HushWatch()
