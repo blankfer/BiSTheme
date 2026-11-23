@@ -1530,24 +1530,25 @@ do
   ok(list and #list == 3 and D.overRoot and drivers[D.overRoot] == "visibility [combat] hide; show", "big, a key and a row: three, on a root a fight hides", list and #list)
   local big
   for _, b in ipairs(list) do if b.piece.kind == "big" then big = b end end
-  ok(big and big.attr.type1 == "spell" and big.attr.spell1 == "Windfury Weapon" and big.parent == D.overRoot and big.pts[1][2] == UIParent, "it casts; it stands on UIParent, not on the deck")
+  ok(big and big.attr["*type1"] == "spell" and big.attr["*spell1"] == "Windfury Weapon" and big.parent == D.overRoot and big.pts[1][2] == UIParent, "it casts; it stands on UIParent, not on the deck")
   ok(big.w == find("big").w * (find("big").scale or 1) and find("big").a.text == "CAST" and not find("big").tip, "as big as the drawn one, which is not dim")
-  for _, b in ipairs(list) do if b.piece.kind == "key" then ok(b.attr.type1 == "item" and b.attr.item1 == "item:1234", "an item") elseif b.piece.kind == "row" then ok(b.attr.spell1 == "Magma Totem", "a row") end end
+  for _, b in ipairs(list) do if b.piece.kind == "key" then ok(b.attr["*type1"] == "item" and b.attr["*item1"] == "item:1234", "an item") elseif b.piece.kind == "row" then ok(b.attr["*spell1"] == "Magma Totem", "a row") end end
   D.Paint() ok(D.overOf[D.mainSurf][1] == list[1] and D.overN == 3, "painted again: the same ones")
   -- a click: the last word, then used
   big.scripts.PreClick(big) big.scripts.PostClick(big)
-  ok(big.attr.type1 == "spell" and D.Mine().live ~= nil, "pressed: it casts")
+  ok(big.attr["*type1"] == "spell" and D.Mine().live ~= nil, "pressed: it casts")
   local after = 0
   go = { word = "FIND", macro = "/targetexact Sneed", after = function() after = after + 1 end }
   D.Paint() big.scripts.PostClick(big, "LeftButton", true) big.scripts.PostClick(big, "LeftButton", false)
   ok(after == 1, "what comes after it: once a click", after)
   go = { word = "GIVE", spell = "Innervate", unit = "party2" }
-  D.Paint() ok(big.attr.spell1 == "Innervate" and big.attr.unit == "party2", "a spell on a groupmate")
+  D.Paint() ok(big.attr["*spell1"] == "Innervate" and big.attr.unit == "party2", "a spell on a groupmate")
   go = { word = "NEXT", spell = "Disenchant", bag = 0, slot = 4, ok = function() return bagOk end }
-  D.Paint() ok(big.attr.unit == nil and big.attr["target-bag"] == 0 and big.attr["target-slot"] == 4 and big.attr.spell1 == "Disenchant", "a spell on an item in your bags")
-  big.scripts.PreClick(big) ok(big.attr.type1 == "spell", "still that item: it goes")
-  bagOk = false big.scripts.PreClick(big) ok(big.attr.type1 == nil, "the item moved: the click does nothing")
-  D.Paint() ok(big.attr.type1 == "spell", "and the next paint aims again") bagOk = true
+  D.Paint() ok(big.attr.unit == nil and big.attr["target-bag"] == 0 and big.attr["target-slot"] == 4 and big.attr["*spell1"] == "Disenchant", "a spell on an item in your bags")
+  big.scripts.PreClick(big) ok(big.attr["*type1"] == "spell", "still that item: it goes")
+  bagOk = false big.scripts.PreClick(big) ok(big.attr["*type1"] == nil, "the item moved: the click does nothing")
+  ok(big.attr.type1 == nil and big.attr["shift-type1"] == nil, "(one name for every modifier: \"*type1\" - a Shift-click finds it too)")
+  D.Paint() ok(big.attr["*type1"] == "spell", "and the next paint aims again") bagOk = true
   -- under the mouse: put away, and back
   D.frame.scripts.OnDragStart(D.frame) ok(D.overN == 0, "the deck is dragged: put away")
   D.frame.scripts.OnDragStop(D.frame) lay(D.frame) D.Paint() ok(D.overN == 3, "let go: back", D.overN)
@@ -1564,7 +1565,7 @@ do
   ok(D.overN == 0, "shut in the fight: nothing left behind after it", D.overN)
   -- the card's button, pulled out
   D.Show() D.Flip("portrait") D.page = "home" lay(D.frame) D.Paint() lay(D.frame) D.Paint()
-  local tgt for _, b in ipairs(D.overOf[D.mainSurf] or {}) do if b.attr.macrotext1 == "/target party1" then tgt = b end end
+  local tgt for _, b in ipairs(D.overOf[D.mainSurf] or {}) do if b.attr["*macrotext1"] == "/target party1" then tgt = b end end
   ok(tgt and tgt.piece.kind == "cardbtn", "a live card's secure button", D.overN)
   D.PinOut("BiSCast:a") local pf = D.pinFrames["BiSCast:a"] lay(pf) D.PinPaint("BiSCast:a")
   ok(D.overOf[pf] and #D.overOf[pf] == 1 and pf.b1.shown, "and on the pulled-out card")

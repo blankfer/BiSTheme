@@ -18,7 +18,7 @@ BiSTheme = BiSTheme or {}
 local T = BiSTheme
 local D = T.Deck
 if not D or not T.DECK_READY or not D.On then return end
-local MINOR = 1
+local MINOR = 2                                           -- 2 (23 Nov): "*type1", so a Shift-click casts too
 if (T.DECKOVER_MINOR or 0) >= MINOR then return end
 T.DECKOVER_MINOR = MINOR
 
@@ -51,15 +51,17 @@ local function root()
 end
 
 -- what a button does, as attributes; the same words = the same button
-local ATTR = { "type1", "macrotext1", "spell1", "item1", "target-bag", "target-slot", "unit" }
+-- "*type1", not "type1" (Arn, 23 Nov: "shift clicking does not disenchant"): with a modifier held the client asks "shift-type1",
+-- then "*type1", then "type" - never "type1" - so a plain "type1" button did nothing on a Shift-click. "*" = any modifier.
+local ATTR = { "*type1", "*macrotext1", "*spell1", "*item1", "target-bag", "target-slot", "unit" }
 local function what(sec)
   local a = {}
-  if sec.macro then a.type1, a.macrotext1 = "macro", tostring(sec.macro)
+  if sec.macro then a["*type1"], a["*macrotext1"] = "macro", tostring(sec.macro)
   elseif sec.spell then
-    a.type1, a.spell1 = "spell", sec.spell
+    a["*type1"], a["*spell1"] = "spell", sec.spell
     if sec.bag and sec.slot then a["target-bag"], a["target-slot"] = sec.bag, sec.slot end
     if sec.unit then a.unit = sec.unit end
-  elseif sec.item then a.type1, a.item1 = "item", type(sec.item) == "number" and "item:" .. sec.item or tostring(sec.item) end
+  elseif sec.item then a["*type1"], a["*item1"] = "item", type(sec.item) == "number" and "item:" .. sec.item or tostring(sec.item) end
   local key = ""
   for _, k in ipairs(ATTR) do key = key .. "|" .. tostring(a[k]) end
   return a, key
@@ -75,7 +77,7 @@ local function make(r)
     if type(sec.ok) == "function" then
       local fine, yes = pcall(sec.ok)
       if not (fine and yes) then
-        self:SetAttribute("type1", nil)                     -- cancelled, and not aimed again in this click
+        self:SetAttribute("*type1", nil)                    -- cancelled, and not aimed again in this click
         self.key = nil
         D.Phone(D.Dirty)
       end
@@ -105,7 +107,7 @@ end
 
 local function away(b)
   b:Hide()
-  b:SetAttribute("type1", nil)
+  b:SetAttribute("*type1", nil)
   b.key, b.sec, b.def, b.piece, b.at = nil, nil, nil, nil, nil
   D.overFree[#D.overFree + 1] = b
   D.overN = D.overN - 1
