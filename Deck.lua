@@ -764,6 +764,17 @@ local function piece(parent)
   w:SetScript("OnEnter", function(self)
     if self.act then self.wash:Show() end
     D.Speak(self)
+    -- AN ITEM IN YOUR BAGS (Arn, 23 Nov, Processing: "give me the item tooltip so i can compare it to my currently equiped item"):
+    -- `bagItem = { bag, slot }` on a row or an icon = the game's own item tooltip, your worn one beside it, our words under it
+    if self.bagItem and GameTooltip and GameTooltip.SetBagItem then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      if pcall(GameTooltip.SetBagItem, GameTooltip, self.bagItem[1], self.bagItem[2]) then
+        if self.tip then local r, g, b = rgb("dim") GameTooltip:AddLine(self.tip, r, g, b, true) end
+        GameTooltip:Show()
+        if GameTooltip_ShowCompareItem then pcall(GameTooltip_ShowCompareItem, GameTooltip) end
+        return
+      end
+    end
     local tip = self.tip
     for _, fs in ipairs({ self.a, self.c, self.b }) do             -- (cut off: said in full under the mouse)
       if fs.IsTruncated and ask(fs.IsTruncated, fs) == true and type(fs.said) == "string" and fs.said ~= tip then tip = fs.said .. (tip and "\n" .. tip or "") end
@@ -775,7 +786,11 @@ local function piece(parent)
       GameTooltip:Show()
     end
   end)
-  w:SetScript("OnLeave", function(self) self.wash:Hide() if GameTooltip then GameTooltip:Hide() end end)
+  w:SetScript("OnLeave", function(self)
+    self.wash:Hide()
+    if GameTooltip then GameTooltip:Hide() end
+    if self.bagItem and GameTooltip_HideShoppingTooltips and GameTooltip then pcall(GameTooltip_HideShoppingTooltips, GameTooltip) end
+  end)
   w:RegisterForDrag("LeftButton")                          -- (a card is pulled out by dragging it: DeckPins.lua)
   w:SetScript("OnDragStart", function(self)                -- (... and an app by its icon or its OUT key: DeckWindows.lua)
     if D.fight then return end
@@ -1144,6 +1159,7 @@ end
 function PAINT.row(w, o, m)
   local r = m.rows[o.i] or {}
   local verb, moved = D.Verb(r)
+  w.bagItem = type(r.bagItem) == "table" and r.bagItem or nil
   if not (r.act or r.side or r.less or r.more) then w.bg:SetColorTexture(0, 0, 0, 0) end
   if r.head then
     w.bg:SetColorTexture(0, 0, 0, 0)
@@ -1311,6 +1327,7 @@ function PAINT.icon(w, o, m)
   fit(w.c, (o.b2 and o.h < 36) and "" or b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.ink or (b.lit or b.glow) and "ink" or "ink2", "CENTER", o.w - 2)
   end
   w.flat = b.flat
+  w.bagItem = type(b.bagItem) == "table" and b.bagItem or nil
   w.act = press(m.def, b.act)
   w.tip, w.lit, w.glow = b.tip, b.lit and true or nil, b.glow
   if D.IsSecure(b.act) then w.sec, w.secDef = b.act, m.def end
@@ -1801,7 +1818,7 @@ function D.Paint()
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
     w.act, w.tip, w.hot, w.lit, w.dragId, w.keys, w.aloud = nil, nil, nil, nil, nil, nil, nil
-    w.dragApp, w.surf, w.sec, w.secDef, w.hush = nil, D.surf, nil, nil, nil
+    w.dragApp, w.surf, w.sec, w.secDef, w.hush, w.bagItem = nil, D.surf, nil, nil, nil, nil
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end

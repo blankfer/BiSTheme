@@ -558,6 +558,31 @@ do
     D.Paint()
     for _, w in ipairs(D.frame.pieces) do if w.e1 and w:IsShown() then ok(not w.e1:IsShown(), "its extra words gone with it") end end
   end
+  -- AN ITEM'S OWN TOOLTIP (Arn, 23 Nov: "give me the item tooltip so i can compare it to my currently equiped item")
+  do
+    D.Register{ owner = "BiSBag", key = "p", name = "Bag", page = { tour = nil, rows = function() return { { text = "Cloak", tip = "Click: disenchants it.", bagItem = { 0, 3 } }, { text = "plain", tip = "words" } } end } }
+    local W0, H0, S0 = D.W, D.H, D.shape
+    D.W, D.H, D.shape, D.page = 260, 462, "portrait", "BiSBag:p"
+    D.Paint()
+    local GT, cmp, hid = _G.GameTooltip, nil, nil
+    local bag, lines, text = nil, {}, nil
+    _G.GameTooltip = { SetOwner = function() end, SetBagItem = function(_, b, s) bag = b .. ":" .. s end, SetText = function(_, t) text = t end,
+      AddLine = function(_, t) lines[#lines + 1] = t end, Show = function() end, Hide = function() end }
+    local keepC, keepH = rawget(_G, "GameTooltip_ShowCompareItem"), rawget(_G, "GameTooltip_HideShoppingTooltips")
+    _G.GameTooltip_ShowCompareItem = function() cmp = true end
+    _G.GameTooltip_HideShoppingTooltips = function() hid = true end
+    local r1, r2 = find("row"), find("row", 2)
+    r1:GetScript("OnEnter")(r1)
+    ok(bag == "0:3" and cmp and lines[1] == "Click: disenchants it." and text == nil, "a row of an item: the game's tooltip of that bag slot, your worn one beside it, our words under", bag)
+    r1:GetScript("OnLeave")(r1)
+    ok(hid, "and both go away")
+    bag, cmp = nil, nil
+    r2:GetScript("OnEnter")(r2)
+    ok(bag == nil and not cmp and text == "words", "any other row: its words, as before")
+    _G.GameTooltip, _G.GameTooltip_ShowCompareItem, _G.GameTooltip_HideShoppingTooltips = GT, keepC, keepH
+    D.W, D.H, D.shape, D.page = W0, H0, S0, "BiSLong:p"
+    D.Paint()
+  end
   -- A POP-OUT (Arn, 23 Nov, the game's totem bar: "make it pop out like this to select another one" - "imbue too")
   do
     local put, cast
