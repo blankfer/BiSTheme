@@ -539,8 +539,8 @@ do
     D.W, D.H, D.shape, D.page = 260, 462, "portrait", "BiSNum:p"
     D.Paint()
     local hw, i1, i2 = find("hero"), find("icon"), find("icon", 3)
-    ok(hw.a.text == "77" and hw.a.size >= 40 and hw.b.text == "last 74" and hw.e1.text == "5 fights" and hw.h >= T.DECK_L.NUMBER_MID, "a huge number", hw.a.size)
-    ok(i1.c.text == "Flametongue" and i1.pic.w == 28 and find("icon", 2).a.text == "-" and i2.lit and i2.sec and i2.sec.spell == "Call", "its icons, with their names; one that casts is secure")
+    ok(hw.a.text == "77" and hw.a.size >= 40 and hw.b.text == "last 74" and hw.e1.text == "5 fights" and hw.h >= 72, "a huge number", hw.a.size)
+    ok(i1.c.text == "Flametongue" and i1.pic.w == i1.h - 16 and find("icon", 2).a.text == "-" and i2.lit and i2.sec and i2.sec.spell == "Call", "its icons, with their names; one that casts is secure")
     local tip, dbl = nil, {}
     local GT = _G.GameTooltip
     _G.GameTooltip = setmetatable({ SetOwner = function() end, SetText = function(_, s) tip = s end, AddDoubleLine = function(_, a, b) dbl[#dbl + 1] = a .. " " .. b end, Show = function() end, Hide = function() end }, { __index = GT })
@@ -549,7 +549,7 @@ do
     _G.GameTooltip = GT
     i1.act() ok(pressed == "fire", "an icon's press")
     local rr, n = find("row"), 0
-    ok(rr.h == T.DECK_L.ICON_ROW and rr.a.text == "TRY" and rr.c.text == "new" and find("row", 2).h == T.DECK_L.ROW and find("row", 2).a.text == "a", "a row that is a line of icons", rr.h)
+    ok(rr.h >= 30 and rr.h <= 40 and rr.a.text == "TRY" and rr.c.text == "new" and find("row", 2).h == T.DECK_L.ROW and find("row", 2).a.text == "a", "a row that is a line of icons", rr.h)
     for _, w in ipairs(D.frame.pieces) do if w:IsShown() and w.kind == "icon" and w.c.text == "GoA" then n = n + 1 w.act() end if w:IsShown() and w.kind == "icon" and w.c.text == "SoE" then ok(w.sec and w.sec.spell == "Totem", "one of them casts") end end
     ok(n == 1 and pressed == "row", "each its own press")
     hw.act() ok(pressed == "hero", "and the number's")

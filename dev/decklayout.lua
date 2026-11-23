@@ -82,7 +82,7 @@ for name, v in pairs(VIEWS) do
         if b.kind == "title" then heads = heads + 1 end
         -- EASY TO HIT (Arn, 22 Nov): 22 high and 24 wide at least, before the deck's own 1.25
         if CLICKS[b.kind] then ok(b.w >= 20 and b.h >= 22, "easy to hit: " .. b.kind, where .. " " .. b.w .. "x" .. b.h) end
-        if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and (b.h == L.ROW or b.icons and b.h == L.ICON_ROW or b.two and b.lines <= L.ROW_LINES and b.h == L.ROW + (b.lines - 1) * L.LINE2), "a row can be read", where .. " " .. b.w) end
+        if b.kind == "row" or b.kind == "step" then ok(b.w >= 160 and (b.h == L.ROW or b.icons and b.h >= 30 or b.two and b.lines <= L.ROW_LINES and b.h == L.ROW + (b.lines - 1) * L.LINE2), "a row can be read", where .. " " .. b.w) end
         if b.kind == "app" or b.kind == "railapp" then ok(b.w >= (b.bare and 34 or 44) and b.h >= (b.bare and 34 or b.wide and 32 or 46), "an app can be clicked", where .. " " .. b.w) end
         if b.kind == "key" or b.kind == "tab" then ok(b.w >= 40, "a key can be clicked: " .. b.kind, where .. " " .. b.w) end
         if b.kind == "box" then ok(b.w >= 40, "a number box can be read", where .. " " .. b.w) end
@@ -179,6 +179,17 @@ do
 end
 -- BOTH LINES OF ICONS AT HIS SIZE (Arn, 22 Nov: the Calls were not there at 260 x 462 - the list had kept the room)
 do
+  -- (Combo's page: the number, the row, the Calls, TRY and TOP two lines each, and the last fight - all of it at the normal size)
+  do
+    local c = { kind = "page", number = true, hero = true, icons = { 5, 4 }, iconRows = 4, rows = 5, tabs = 4, apps = 12, lens = function(i) return 20, 40, i <= 4 and "icons" or nil end }
+    local rows, icons, big = 0, 0, 0
+    for _, b in ipairs((T.DeckLayout(c, 260, 462))) do if b.kind == "row" then rows = rows + 1 elseif b.kind == "icon" then icons = icons + 1 elseif b.kind == "hero" then big = b.h end end
+    ok(rows == 5 and icons == 9 and big >= 56, "Combo's whole page at 260 x 462", rows .. " rows, " .. icons .. " icons, number " .. big)
+    rows, big = 0, 0
+    local tall = 0
+    for _, b in ipairs((T.DeckLayout(c, 341, 596))) do if b.kind == "row" then rows = rows + 1 elseif b.kind == "hero" then big = b.h elseif b.kind == "icon" then tall = b.h end end
+    ok(rows == 5 and big == 86 and tall == 46, "more room: bigger", rows .. " " .. big .. " " .. tall)
+  end
   local v = { kind = "page", number = true, hero = true, icons = { 4, 4 }, rows = 8, tabs = 4, keys = 3, say = true, sayN = 60, apps = 12 }
   for _, z in ipairs({ { 260, 462 }, { 260, 420 }, { 300, 500 }, { 443, 314 }, { 600, 420 } }) do
     local lines, rows, number = {}, 0, false

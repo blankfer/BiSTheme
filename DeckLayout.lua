@@ -45,7 +45,10 @@ local L = {
   -- the icons are the largest of these with which ALL of them fit; the last one is a quarter: the picture, its name very small
   -- (Arn, 22 Nov: "apps maybe 1/4 of their size? its just a button but there is room for a lot more apps there"; "small names on the new small icons")
   APP_SIZES = { { 105, 102, 1.7 }, { 87, 84, 1.4 }, { 74, 72, 1.2 }, { 62, 60, 1 }, { 44, 46, 0.75 }, { 36, 42, 0.6, bare = true } },
-  HERO_MIN = 70, HERO_SHARE = 0.28, NUMBER = 86, NUMBER_MID = 70, NUMBER_MIN = 58, ICON_H = 44, ICON_ROW = 38,      -- a picture; one huge number; a line of icons with their names
+  HERO_MIN = 70, HERO_SHARE = 0.28, NUMBER_MIN = 56,      -- a picture; one huge number
+  -- EVERYTHING FITS AT THE NORMAL SIZE (Arn, 22 Nov: "lets always make stuff fit the 100% size when i double click the resize drag corner
+  -- we make the icons smaller"): the largest of these with which the whole page stands: the number, a line of icons, a row of icons
+  ICON_FITS = { { 86, 46, 40 }, { 80, 44, 38 }, { 72, 42, 36 }, { 64, 40, 36 }, { 60, 38, 34 }, { 56, 36, 32 }, { 56, 34, 30 } },
   MAX_CARDS = 6,
   HIT = 24,                                      -- nothing to click is smaller than this (Arn, 22 Nov: "easy for people with accessibility")
 }
@@ -259,7 +262,8 @@ end
 -- lines stood over the next row: now up to ROW_LINES, and never more than its band holds): `lens(i)` = how many letters it
 -- says, and how much of its width its right side takes (nil = not asked, every row is one line); a third answer = it has a line of
 -- its own under its name, so it is always two.
-local function rowList(out, kind, n, x, y, w, h, first, skip, lens)
+local function rowList(out, kind, n, x, y, w, h, first, skip, lens, iconRow)
+  iconRow = iconRow or L.ICON_FITS[2][3]
   local most = max(1, min(L.ROW_LINES, floor((h - L.ROW) / L.LINE2) + 1))
   local function lines(i)
     if not lens then return 1 end
@@ -271,8 +275,8 @@ local function rowList(out, kind, n, x, y, w, h, first, skip, lens)
     return max(1, min(most, ceil(long * 1.1 / room)))            -- (a tenth more: words break where words end)
   end
   -- (a row that is a line of icons - its words at the left - has its own height)
-  local function icons(i) if not lens then return false end local _, _, under = lens(i) return under == "icons" and h >= L.ICON_ROW end
-  local function high(i) return icons(i) and L.ICON_ROW or L.ROW + (lines(i) - 1) * L.LINE2 end
+  local function icons(i) if not lens then return false end local _, _, under = lens(i) return under == "icons" and h >= iconRow end
+  local function high(i) return icons(i) and iconRow or L.ROW + (lines(i) - 1) * L.LINE2 end
   local function lies(a) local k, used = 0, 0 while a + k <= n and used + high(a + k) <= h do used = used + high(a + k) + 2 k = k + 1 end return k end
   -- never past the end: the last page starts as early as it can
   local last, used = n + 1, 0
@@ -438,15 +442,25 @@ end
 -- the line under a list: as many lines as it says (three at most)
 local function sayHigh(v, w) return L.SAY * max(1, min(3, ceil((v.sayN or 0) * 5.4 / max(1, w - 4)))) end
 --- Lines of icons (v.icons = how many in each), from the top down, while `keep` is left under them.
-local function iconLines(c, v, keep)
+local function iconLines(c, v, keep, ih)
   for line, n in ipairs(v.icons or {}) do
-    if n > 0 and c:left() >= L.ICON_H + L.GAP + keep then
+    if n > 0 and c:left() >= ih + L.GAP + keep then
       local y = c.y0
-      c.y0 = y + L.ICON_H + L.GAP
+      c.y0 = y + ih + L.GAP
       local each = (c.w - (n - 1) * L.GAP) / n
-      for i = 1, n do c.out[#c.out + 1] = { kind = "icon", i = i, line = line, x = c.x + (i - 1) * (each + L.GAP), y = y, w = each, h = L.ICON_H } end
+      for i = 1, n do c.out[#c.out + 1] = { kind = "icon", i = i, line = line, x = c.x + (i - 1) * (each + L.GAP), y = y, w = each, h = ih } end
     end
   end
+end
+--- The sizes of the number, the lines and the rows of icons with which the page stands in `room` (`more` = what else is in it).
+local function iconFit(v, room, more)
+  if not (v.icons or v.iconRows or v.number) then return L.ICON_FITS[2] end
+  local ir = v.iconRows or 0
+  local rows = min(2, max(0, (v.rows or 0) - ir)) * (L.ROW + 2)            -- (of a longer list its icons and two rows; the rest rolls)
+  for _, z in ipairs(L.ICON_FITS) do
+    if (v.number and z[1] + L.GAP or 0) + #(v.icons or {}) * (z[2] + L.GAP) + ir * (z[3] + 2) + rows + more <= room then return z end
+  end
+  return L.ICON_FITS[#L.ICON_FITS]
 end
 local function page(out, v, w, h, sw)
   local x, W = L.PAD, w - 2 * L.PAD
@@ -468,7 +482,7 @@ local function page(out, v, w, h, sw)
       if v.find then c:top("find", L.TAB_H) end
       if v.strip and on(sw, "strip") then c:top("strip", L.STRIP) end
       if v.say and on(sw, "say") then c:bottom("say", sayHigh(v, lw)) end
-      rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip, v.lens)
+      rowList(out, "row", v.rows, x, c.y0, lw, c:left(), 0, v.skip, v.lens, iconFit({ rows = v.rows, iconRows = v.iconRows }, c:left(), 0)[3])
       x, W = x + lw + L.GAP * 2, W - lw - L.GAP * 2
     end
     local c = column(out, x, y, W, bottom - y)
@@ -477,8 +491,9 @@ local function page(out, v, w, h, sw)
       if nt > 0 and c:left() >= L.TAB_H then local ty = c.y0 c.y0 = ty + L.TAB_H + L.GAP spread(out, "tab", nt, x, ty, W, L.TAB_H) end
       if v.find and c:left() >= L.TAB_H then c:top("find", L.TAB_H) end
     end
-    if hero and v.number and c:left() >= L.NUMBER_MIN then c:top("hero", c:left() >= L.NUMBER + L.BOX_H and L.NUMBER or L.NUMBER_MIN) hero = nil end
-    iconLines(c, v, 0)
+    local z = iconFit({ number = v.number, icons = v.icons }, c:left(), nb > 0 and L.BOX_H + L.GAP or 0)
+    if hero and v.number and c:left() >= L.NUMBER_MIN then c:top("hero", z[1]) hero = nil end
+    iconLines(c, v, 0, z[2])
     if nb > 0 and c:left() >= L.BOX_H then
       c.y0 = c.y0 + boxLines(out, nb, x, c.y0, W, 62, c:left() >= 2 * (L.BOX_H + L.GAP) + L.LINE)
     end
@@ -493,13 +508,11 @@ local function page(out, v, w, h, sw)
   -- what the list needs to be worth having; the picture takes what is over
   local need = (v.rows or 0) > 0 and (v.icons and 2 or 4) * (L.ROW + 2) or 0       -- (lines of icons go first: the list still rolls)
   local mids = (nb > 0 and L.BOX_H + L.GAP or 0) + (nt > 0 and L.TAB_H + L.GAP or 0) + (v.find and L.TAB_H + L.GAP or 0) + ((v.strip and on(sw, "strip")) and L.STRIP + L.GAP or 0)
+  local fitted
   if hero and v.number then
-    local left = c:left()
-    if left >= L.NUMBER_MIN + need then
-      local rest = L.GAP + need + mids + #(v.icons or {}) * (L.ICON_H + L.GAP) + (v.iconRows or 0) * (L.ICON_ROW + 2) - (v.iconRows and need or 0)
-      c:top("hero", left >= L.NUMBER + rest and L.NUMBER or left >= L.NUMBER_MID + rest - L.ICON_ROW and L.NUMBER_MID or L.NUMBER_MIN)
-    end
-    iconLines(c, v, need + mids)
+    fitted = iconFit(v, c:left(), mids)
+    if c:left() >= fitted[1] + need then c:top("hero", fitted[1]) end
+    iconLines(c, v, need + mids, fitted[2])
   elseif hero then
     local room = c:left() - need - mids
     if room >= L.HERO_MIN then c:top("hero", min(floor(h * L.HERO_SHARE), room - L.GAP)) end
@@ -524,7 +537,7 @@ local function page(out, v, w, h, sw)
       rowList(out, "row", min(v.rows - skip, room), x, c.y0, half, c:left(), skip)
       if v.rows - skip > room then rowList(out, "row", min(v.rows - skip - room, room), x + half + L.GAP, c.y0, half, c:left(), skip + room) end
     else
-      rowList(out, "row", v.rows, x, c.y0, W, c:left(), 0, v.skip, v.lens)
+      rowList(out, "row", v.rows, x, c.y0, W, c:left(), 0, v.skip, v.lens, fitted and fitted[3])
     end
   end
 end

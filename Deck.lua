@@ -1018,6 +1018,7 @@ function PAINT.row(w, o, m)
     if w.pic.SetDesaturated then w.pic:SetDesaturated(r.done and true or false) end
     w.pic:SetAlpha(r.done and 0.55 or 1)
     w.pic:Show()
+    w.picOn = true
   end
   local ink = r.done and "dim" or r.tint or "ink"           -- (tint: an item's quality, always said in words too)
   say(w.b, moved and "" or r.right or "", 11, r.ink or "ink2", "RIGHT")
@@ -1245,7 +1246,7 @@ local function words(w, o)
       w.a:SetPoint("TOPLEFT", w, "TOPLEFT", 5, -5) w.a:SetPoint("TOPRIGHT", w, "TOPLEFT", 68, -5)
       w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", 5, 5) w.c:SetPoint("BOTTOMRIGHT", w, "BOTTOMLEFT", 68, 5)
     elseif w.sub then
-      local x = w.pic and w.pic:IsShown() and 36 or 24
+      local x = w.picOn and 36 or 24
       w.a:SetPoint("TOPLEFT", w, "TOPLEFT", x, -4) w.a:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
       w.c:SetPoint("BOTTOMLEFT", w, "BOTTOMLEFT", x, 4) w.c:SetPoint("RIGHT", w.b, "LEFT", -6, 0)
     else
@@ -1586,7 +1587,7 @@ function D.Paint()
     if w.pic then w.pic:Hide() end
     if w.v then w.v:Hide() w.vb:Hide() end
     if w.e1 then w.e1:Hide() end
-    w.chip, w.tips, w.heroArt = nil, nil, nil
+    w.chip, w.tips, w.heroArt, w.picOn = nil, nil, nil, nil
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)
     w:SetSize(o.w, o.h)
