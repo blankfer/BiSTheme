@@ -533,13 +533,13 @@ do
   do
     local pressed
     D.Register{ owner = "BiSNum", key = "p", name = "Num", page = { tour = nil, rows = function() return { { text = "TRY", sub = "new", icons = { { pic = 7, word = "SoE", act = { word = "x", spell = "Totem" } }, { pic = 8, word = "GoA", act = { word = "x", peek = true, fn = function() pressed = "row" end } } } }, { text = "a" } } end, tabs = function() return { "A", "B" } end,
-      hero = function() return { art = "number", big = "77", small = "WF + FT", right = "last 74", under = "5 fights", tip = "The breakdown", lines = { { "Windfury", "12%" }, { "Best", "90" } }, peek = true, fn = function() pressed = "hero" end } end,
+      hero = function() return { art = "number", big = "77", small = "WF + FT", right = "last 74", under = "5 fights", corner = "group 412", tip = "The breakdown", lines = { { "Windfury", "12%" }, { "Best", "90" } }, peek = true, fn = function() pressed = "hero" end } end,
       icons = function() return { { { pic = 1, word = "Flametongue", act = { word = "x", peek = true, fn = function() pressed = "fire" end } }, { word = "Water", glow = "red" } }, { { pic = 2, word = "ELEMENTS", lit = true, act = { word = "x", spell = "Call" } } } } end } }
     local W0, H0, S0 = D.W, D.H, D.shape
     D.W, D.H, D.shape, D.page = 260, 462, "portrait", "BiSNum:p"
     D.Paint()
     local hw, i1, i2 = find("hero"), find("icon"), find("icon", 3)
-    ok(hw.a.text == "77" and hw.a.size >= 40 and hw.b.text == "last 74" and hw.e1.text == "5 fights" and hw.h >= 72, "a huge number", hw.a.size)
+    ok(hw.a.text == "77" and hw.a.size >= 40 and hw.b.text == "last 74" and hw.e1.text == "5 fights" and hw.e2.text == "group 412" and hw.h >= 72, "a huge number", hw.a.size)
     ok(i1.c.text == "Flametongue" and i1.pic.w == i1.h - 16 and find("icon", 2).a.text == "-" and find("icon", 2).glow == "red" and find("icon", 2).bar.shown ~= false and not i1.glow and i2.lit and i2.sec and i2.sec.spell == "Call", "its icons, with their names; one that casts is secure")
     local tip, dbl = nil, {}
     local GT = _G.GameTooltip

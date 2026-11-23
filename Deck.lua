@@ -1140,15 +1140,19 @@ end
 --- ONE HUGE NUMBER (Arn, 22 Nov, Combo: "DPS number huge of current selected set up, all the break down numbers when hover over it"):
 --- h.small over it, h.right and h.under at its right, h.lines = { { left, right }, ... } on hover.
 function D.HERO.number(w, o, h)
-  if not w.e1 then w.e1 = text(w, 12) end
+  if not w.e1 then w.e1, w.e2 = text(w, 12), text(w, 12) end
   say(w.b, h.right or "", 13, h.rightInk or "ink2", "RIGHT")
   say(w.e1, h.under or "", 11, "ink2", "RIGHT")
-  fit(w.c, h.small or "", { 12, 11, 10, 9 }, "accent", nil, o.w - 16)
+  fit(w.c, h.small or "", { 12, 11, 10, 9 }, "accent", nil, o.w - 16 - (h.corner and #h.corner * 6 + 8 or 0))
   local side = math.max(wide(w.b) or #tostring(h.right or "") * 7, wide(w.e1) or #tostring(h.under or "") * 6)
   fit(w.a, h.big or "-", o.h >= 80 and { 56, 48, 40, 32, 24 } or { 38, 32, 26, 22 }, h.ink or "ink", nil, math.max(40, o.w - side - 30))
   w.e1:ClearAllPoints()
   w.e1:SetPoint("BOTTOMRIGHT", w, "BOTTOMRIGHT", -10, 8)
   w.e1:Show()
+  say(w.e2, h.corner or "", 11, "dim", "RIGHT")             -- (a small word at the top right)
+  w.e2:ClearAllPoints()
+  w.e2:SetPoint("TOPRIGHT", w, "TOPRIGHT", -10, -6)
+  w.e2:Show()
 end
 --- A line of icons (page.icons = fn(tab) -> { { icon, ... }, { icon, ... } }, icon = { pic, word = its small name, act = button, lit,
 --- glow = a colour of its own over it (soft = only a breath of it), flat = a word and no picture, ink, tip }): each a picture with its name under it; a press does its button.
@@ -1622,7 +1626,7 @@ function D.Paint()
     if w.a.SetMaxLines and w.most ~= most then w.most = most pcall(w.a.SetMaxLines, w.a, most) w.a.said = nil end
     if w.pic then w.pic:Hide() end
     if w.v then w.v:Hide() w.vb:Hide() end
-    if w.e1 then w.e1:Hide() end
+    if w.e1 then w.e1:Hide() w.e2:Hide() end
     w.chip, w.tips, w.heroArt, w.picOn, w.glow, w.soft, w.flat = nil, nil, nil, nil, nil, nil, nil
     w:ClearAllPoints()
     w:SetPoint("TOPLEFT", f, "TOPLEFT", o.x, -o.y)
