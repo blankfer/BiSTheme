@@ -1513,7 +1513,7 @@ do
   D.Register{ owner = "BiSCast", key = "a", name = "Cast", order = 0.1,
     card = { prio = function() return 9 end, lines = function() return { "CAST", "", "x", "" } end, buttons = function() return { { word = "TARGET", macro = "/target party1" } } end },
     page = { big = function() return go end, keys = function() return { { word = "EAT", item = 1234 }, { word = "PLAIN", fn = function() used = used + 1 end } } end,
-      rows = function() return { { text = "Totem", act = { word = "cast", spell = "Magma Totem" } }, { text = "no" } } end } }
+      rows = function() return { { text = "Totem", act = { word = "cast", spell = "Magma Totem" }, side = { word = "SKIP", fn = function() used = used + 10 end } }, { text = "no" } } end } }
   local def = D.defs["BiSCast:a"]
   -- every piece knows where it stands: its own numbers on the deck's corner
   local function rect(fr, l, t2)
@@ -1533,6 +1533,8 @@ do
   ok(big and big.attr["*type1"] == "spell" and big.attr["*spell1"] == "Windfury Weapon" and big.parent == D.overRoot and big.pts[1][2] == UIParent, "it casts; it stands on UIParent, not on the deck")
   ok(big.w == find("big").w * (find("big").scale or 1) and find("big").a.text == "CAST" and not find("big").tip, "as big as the drawn one, which is not dim")
   for _, b in ipairs(list) do if b.piece.kind == "key" then ok(b.attr["*type1"] == "item" and b.attr["*item1"] == "item:1234", "an item") elseif b.piece.kind == "row" then ok(b.attr["*spell1"] == "Magma Totem", "a row") end end
+  -- ITS OWN KEYS KEEP THEIR ROOM (Arn, 23 Nov: "skip does not hide the item" - the row's secure click lay over SKIP)
+  for _, b in ipairs(list) do if b.piece.kind == "row" then ok(b.w == (b.piece.w - 52) * (b.piece.scale or 1), "a row's secure click stops short of its SKIP key", b.w .. " of " .. b.piece.w) end end
   D.Paint() ok(D.overOf[D.mainSurf][1] == list[1] and D.overN == 3, "painted again: the same ones")
   -- a click: the last word, then used
   big.scripts.PreClick(big) big.scripts.PostClick(big)

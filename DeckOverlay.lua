@@ -146,6 +146,7 @@ function D.OverlayPaint(owner, f)
       local k = ask(w.GetEffectiveScale, w) or 1
       local l, t = ask(w.GetLeft, w), ask(w.GetTop, w)
       local ww, hh = ask(w.GetWidth, w), ask(w.GetHeight, w)
+      if type(ww) == "number" and w.secRight then ww = ww - w.secRight end   -- (the row's own keys at its right stay clickable)
       if type(l) == "number" and type(t) == "number" and type(ww) == "number" and type(hh) == "number" and ww > 0 and hh > 0
         and not covered(owner, (l + ww / 2) * k, (t - hh / 2) * k) then
         r = r or root()

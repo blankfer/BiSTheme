@@ -1202,7 +1202,8 @@ function PAINT.row(w, o, m)
   end
   w.act = press(m.def, r.act)
   w.tip = r.tip
-  if D.IsSecure(r.act) then w.sec, w.secDef = r.act, m.def end
+  -- (its own keys keep their room: Arn, 23 Nov, "skip does not hide the item" - the row's secure click lay over SKIP too)
+  if D.IsSecure(r.act) then w.sec, w.secDef, w.secRight = r.act, m.def, (r.side and 52) or ((r.less or r.more) and 54) or nil end
   w.keys = (r.less or r.more or r.side) and true or nil
 end
 local function button(w, b, def, size, room)
@@ -1818,7 +1819,7 @@ function D.Paint()
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
     w.act, w.tip, w.hot, w.lit, w.dragId, w.keys, w.aloud = nil, nil, nil, nil, nil, nil, nil
-    w.dragApp, w.surf, w.sec, w.secDef, w.hush, w.bagItem = nil, D.surf, nil, nil, nil, nil
+    w.dragApp, w.surf, w.sec, w.secDef, w.hush, w.bagItem, w.secRight = nil, D.surf, nil, nil, nil, nil, nil
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
