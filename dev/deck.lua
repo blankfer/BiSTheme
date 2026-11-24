@@ -416,6 +416,33 @@ fire("PLAYER_ENTERING_WORLD")
 ok(D.profile == "PvP" and find("kicker").a.text:find("PINNED"), "pinned by hand: it stays", D.profile)
 D.Pin(nil)
 
+-- FOLDED TO ITS FOOT (Arn, 23 Nov: "when i close deck with x or esc ..., fold into the footer another x on the footer that closes it")
+do
+  D.Show() D.Paint()
+  local cl = find("close")
+  cl.act()
+  local ft = D.foot
+  ok(not D.frame.shown and ft and ft.shown and D.Store().folded and not D.Store().open, "the phone's x: folded to its foot, saved")
+  ok(ft.a.said == "BiS>" and ft.x and ft.x.a.said == "x" and ft.h == D.FOOT_H, "the foot: BiS> and its own x")
+  ft.scripts.OnClick(ft)
+  ok(D.frame.shown and not ft.shown and D.Store().open and not D.Store().folded, "a click on the foot: the phone again")
+  D.frame:Hide()                                              -- (Escape: the game's list hides it)
+  ok(not D.frame.shown and ft.shown and D.Store().folded, "Escape: folded too, not gone")
+  ft.x.scripts.OnClick(ft.x)
+  ok(not D.frame.shown and not ft.shown and not D.Store().folded and not D.Store().open, "the foot's x: all of it closed")
+  D.Show() D.Toggle()
+  ok(not D.frame.shown and ft.shown, "the key on an open phone: folds it")
+  D.Toggle()
+  ok(D.frame.shown and not ft.shown, "the key on a folded one: opens it")
+  D.Fold() fire("PLAYER_REGEN_DISABLED")
+  ok(ft.alpha == D.FIGHT_ALPHA and ft.mouse == false, "a fight: the foot faint, the mouse goes through")
+  fire("PLAYER_REGEN_ENABLED")
+  ok(ft.alpha == 1 and ft.mouse == true, "after it: back")
+  D.Hide()
+  ok(not ft.shown and not D.frame.shown, "shut by code: the foot goes too")
+  D.Show()
+end
+
 -- hidden: nothing runs
 D.Hide()
 local before = calls
