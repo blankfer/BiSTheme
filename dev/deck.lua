@@ -810,23 +810,30 @@ do
   local wc0
   for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then wc0 = true end end
   ok(not wc0, "and no welcome card on home")
-  -- the walk-through is still there for a typed /bist deck welcome
-  D.Open("BiSDeck:welcome")
-  ok(find("title").a.text == "Welcome" and find("stephead").a.text:find("WELCOME", 1, true), "typed: the welcome", D.page)
-  click(find("big"))
-  ok(find("steptext").a.text:find("^Drag the deck"), "one button, on to the next", find("steptext").a.text)
+  -- NO WELCOME AT ALL (Arn, 25 Nov: "only leave the try deck, no more onboarding per app" - "remove the button"): no page,
+  -- no way back to it
+  ok(D.defs["BiSDeck:welcome"] == nil and D.Replay == nil and D.Welcome == nil, "no welcome page, no replay, no steps")
+  -- EVERY PICTURE SAYS ITS OWN CROP (Arn's shot, 25 Nov: Rivals black, Social and BG zoomed, Party a cyan slash). A piece
+  -- that showed a class circle cut from the class sheet, reused for an app icon, must not keep that corner.
+  do
+    local cut
+    local pic = { SetTexCoord = function(_, a, b, c, d) cut = { a, b, c, d } end }
+    local CLASS = { 0.25, 0.5, 0, 0.25 }
+    D.Crop(pic, CLASS)
+    ok(cut and cut[1] == 0.25 and cut[4] == 0.25, "a row's class circle: its corner of the sheet")
+    D.Crop(pic)
+    ok(cut[1] == D.ICON_CROP[1] and cut[2] == D.ICON_CROP[2] and cut[4] == D.ICON_CROP[4], "the same piece as an app icon: the whole icon again")
+    cut = nil
+    D.Crop(pic)
+    ok(cut == nil, "and a repaint with nothing changed costs nothing")
+  end
   D.frame.scripts.OnDragStart(D.frame) D.frame.scripts.OnDragStop(D.frame)
   tick(2)
-  ok(find("steptext").a.text:find("^Pull the corner"), "you dragged it: on by itself", find("steptext").a.text)
+  ok(D.page == "home", "dragging it opens nothing", D.page)
   local grip = D.frame.corner
   grip.scripts.OnMouseDown(grip) cx, cy = 5040, -140 tick(0.1) grip.scripts.OnMouseUp(grip)
   tick(2)
-  ok(find("steptext").a.text:find("^Tall or wide"), "you sized it: on", find("steptext").a.text)
-  click(find("link", 2))
-  ok(find("steptext").a.text:find("^Read aloud"), "skipped: on", find("steptext").a.text)
-  click(find("big"))
-  ok(D.page == "switches", "its button opens the switches")
-  click(find("home"))
+  ok(D.page == "home", "sizing it opens nothing either", D.page)
   ok(D.page == "home" and count("app") > 0, "home", D.page)
   D.Hide() D.Show()
   ok(D.page == "home", "it never opens by itself", D.page)
@@ -890,7 +897,7 @@ do
   -- an addon that hands in its own icon wins over the catalogue's
   ok(D.Register{ owner = "BiSGamba", key = "app", name = "Gamba!", open = function() end } and icon("Gamba!") ~= nil and icon("Gamba") == nil, "an addon's own icon wins")
   -- no catalogue on a client that cannot say
-  for _, pg in ipairs({ "BiSDeck:apps", "BiSDeck:welcome", "BiSGuild:app", "BiSNew:p" }) do
+  for _, pg in ipairs({ "BiSDeck:apps", "BiSGuild:app", "BiSNew:p" }) do
     for _, s in ipairs({ { 220, 300 }, { 324, 576 }, { 430, 300 }, { 1366, 768 } }) do
       D.page, D.W, D.H, D.shape = pg, s[1], s[2], T.DeckShape(s[1], s[2])
       local okP, why = pcall(D.Paint)
