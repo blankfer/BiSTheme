@@ -39,7 +39,7 @@
 ]]
 BiSTheme = BiSTheme or {}
 local T = BiSTheme
-local MINOR = 1
+local MINOR = 3                                           -- 2 (23 Nov): an icon's pop-out list (b.fly); 3: x / Escape fold it to its foot
 if (T.DECK_MINOR or 0) >= MINOR and T.DECK_READY then return end
 if not T.DeckLayout then return end                       -- the layout file goes first
 T.DECK_MINOR, T.DECK_READY = MINOR, nil
@@ -733,6 +733,7 @@ local LOOK = {                                            -- kind -> ground colo
   step = { "sunken", 0.55 }, switch = { "sunken", 0.55 }, big = { "gold", 0.22 }, key = { "sunken", 0.8 }, preset = { "sunken", 0.8 }, more = { "sunken", 0.8 },
   icon = { "card", 1 }, hero = { "card", 1 }, text = { "card", 1 }, progress = { "sunken", 1 }, stepcard = { "card", 1 }, strip = { "line", 1 },
   cardbtn = { "sunken", 1 }, cardout = { "sunken", 1 }, cardend = { "sunken", 1 }, less = { "sunken", 1 }, plus = { "sunken", 1 }, side = { "sunken", 1 }, morecards = { "sunken", 0.8 }, grip = { "line", 0 }, app = { "card", 1 }, railapp = { "card", 1 },
+  flyplate = { "line2", 1 },
 }
 
 local function text(parent, size, colour)
@@ -763,6 +764,17 @@ local function piece(parent)
   w:SetScript("OnEnter", function(self)
     if self.act then self.wash:Show() end
     D.Speak(self)
+    -- AN ITEM IN YOUR BAGS (Arn, 23 Nov, Processing: "give me the item tooltip so i can compare it to my currently equiped item"):
+    -- `bagItem = { bag, slot }` on a row or an icon = the game's own item tooltip, your worn one beside it, our words under it
+    if self.bagItem and GameTooltip and GameTooltip.SetBagItem then
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      if pcall(GameTooltip.SetBagItem, GameTooltip, self.bagItem[1], self.bagItem[2]) then
+        if self.tip then local r, g, b = rgb("dim") GameTooltip:AddLine(self.tip, r, g, b, true) end
+        GameTooltip:Show()
+        if GameTooltip_ShowCompareItem then pcall(GameTooltip_ShowCompareItem, GameTooltip) end
+        return
+      end
+    end
     local tip = self.tip
     for _, fs in ipairs({ self.a, self.c, self.b }) do             -- (cut off: said in full under the mouse)
       if fs.IsTruncated and ask(fs.IsTruncated, fs) == true and type(fs.said) == "string" and fs.said ~= tip then tip = fs.said .. (tip and "\n" .. tip or "") end
@@ -774,7 +786,11 @@ local function piece(parent)
       GameTooltip:Show()
     end
   end)
-  w:SetScript("OnLeave", function(self) self.wash:Hide() if GameTooltip then GameTooltip:Hide() end end)
+  w:SetScript("OnLeave", function(self)
+    self.wash:Hide()
+    if GameTooltip then GameTooltip:Hide() end
+    if self.bagItem and GameTooltip_HideShoppingTooltips and GameTooltip then pcall(GameTooltip_HideShoppingTooltips, GameTooltip) end
+  end)
   w:RegisterForDrag("LeftButton")                          -- (a card is pulled out by dragging it: DeckPins.lua)
   w:SetScript("OnDragStart", function(self)                -- (... and an app by its icon or its OUT key: DeckWindows.lua)
     if D.fight then return end
@@ -796,6 +812,8 @@ local function piece(parent)
   return w
 end
 
+-- one of ours hides the phone: its OnHide must not take it for Escape (D.Fold)
+local function hush(fn) D.quiet = true local ok, err = pcall(fn) D.quiet = nil if not ok then error(err, 0) end end
 local function say(fs, words, size, colour, justify)
   fs.hit = true
   colour, justify = colour or "ink", justify or "LEFT"
@@ -863,6 +881,7 @@ local function press(def, b)
   if type(b) ~= "table" then return nil end
   if type(b.fn) == "function" then
     return function()
+      D.fly = nil                                           -- (any other press puts an open pop-out away)
       D.Call(def, "button", b.fn)
       if not b.peek then D.Used(def) end
       if def ~= D.homeDef then D.Learn(def) end            -- (where you use it: the inferred cards)
@@ -893,8 +912,8 @@ end
 function PAINT.close(w)
   say(w.a, "x", 12, "ink2", "CENTER")
   local id = D.surf.id
-  w.act = id and function() D.WinClose(id) end or function() D.Hide() end
-  w.tip = id and "Back into the phone" or "Close"
+  w.act = id and function() D.WinClose(id) end or function() D.Fold() end
+  w.tip = id and "Back into the phone" or "Fold it to its foot (the foot's x closes it)"
 end
 function PAINT.out(w, o, m)
   say(w.a, "OUT", 11, "ink2", "CENTER")
@@ -1142,6 +1161,7 @@ end
 function PAINT.row(w, o, m)
   local r = m.rows[o.i] or {}
   local verb, moved = D.Verb(r)
+  w.bagItem = type(r.bagItem) == "table" and r.bagItem or nil
   if not (r.act or r.side or r.less or r.more) then w.bg:SetColorTexture(0, 0, 0, 0) end
   if r.head then
     w.bg:SetColorTexture(0, 0, 0, 0)
@@ -1184,7 +1204,8 @@ function PAINT.row(w, o, m)
   end
   w.act = press(m.def, r.act)
   w.tip = r.tip
-  if D.IsSecure(r.act) then w.sec, w.secDef = r.act, m.def end
+  -- (its own keys keep their room: Arn, 23 Nov, "skip does not hide the item" - the row's secure click lay over SKIP too)
+  if D.IsSecure(r.act) then w.sec, w.secDef, w.secRight = r.act, m.def, (r.side and 52) or ((r.less or r.more) and 54) or nil end
   w.keys = (r.less or r.more or r.side) and true or nil
 end
 local function button(w, b, def, size, room)
@@ -1294,7 +1315,8 @@ function PAINT.icon(w, o, m)
     if w.pic.art ~= b.pic then w.pic.art = b.pic w.pic:SetTexture(b.pic) end
     w.pic:ClearAllPoints()
     w.pic:SetPoint("TOP", w, "TOP", 0, -3)
-    w.pic:SetSize(o.b and o.h - 13 or o.h - 16, o.b and o.h - 13 or o.h - 16)
+    local side = (o.b2 and o.h < 36) and o.h - 6 or o.b and o.h - 13 or o.h - 16   -- (a squeezed pop-out: the picture alone)
+    w.pic:SetSize(side, side)
     if w.pic.SetDesaturated then w.pic:SetDesaturated(false) end
     w.pic:SetAlpha(b.done and 0.45 or 1)
     w.pic:Show()
@@ -1305,12 +1327,65 @@ function PAINT.icon(w, o, m)
     say(w.c, "", 9)
   else
   say(w.a, b.pic and "" or "-", 15, "dim", "CENTER")
-  fit(w.c, b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.ink or (b.lit or b.glow) and "ink" or "ink2", "CENTER", o.w - 2)
+  fit(w.c, (o.b2 and o.h < 36) and "" or b.word or "", o.b and { 8, 7, 6 } or { 10, 9, 8, 7 }, b.ink or (b.lit or b.glow) and "ink" or "ink2", "CENTER", o.w - 2)
   end
   w.flat = b.flat
+  w.bagItem = type(b.bagItem) == "table" and b.bagItem or nil
   w.act = press(m.def, b.act)
   w.tip, w.lit, w.glow = b.tip, b.lit and true or nil, b.glow
   if D.IsSecure(b.act) then w.sec, w.secDef = b.act, m.def end
+  -- A POP-OUT (Arn, 23 Nov, the game's own totem bar: "when i click bis totem make it pop out like this to select another one" -
+  -- "imbue too"): an icon with `fly` = { icon, ... } opens a column of them over itself; a press there does that one's button
+  -- and puts the column away, as does a press anywhere else or the icon again.
+  if type(b.fly) == "table" and #b.fly > 0 and not o.b2 then
+    local key = tostring(D.page or "home") .. ":" .. tostring(b.flyKey or (tostring(o.line) .. ":" .. tostring(o.i)))
+    w.sec, w.secDef = nil, nil
+    w.act = function() D.fly = D.fly ~= key and key or nil D.Dirty(true) end
+    if D.fly == key and not D.fight then
+      w.lit = true
+      D.flyAt = { o = o, list = b.fly, def = m.def }
+    end
+  end
+end
+D.FLY_GAP, D.FLY_TOP, D.FLY_FOOT, D.FLY_MIN = 2, 34, 8, 30                -- between its icons; kept clear of the status line and the foot
+--- An icon of the pop-out, made from the app's: its button puts the column away after it (a cast: once the click is done).
+local function flyItem(e)
+  local x = {}
+  for k, v in pairs(e) do x[k] = v end
+  local a = e.act
+  if type(a) == "table" then
+    local c = {}
+    for k, v in pairs(a) do c[k] = v end
+    if D.IsSecure(a) then
+      local after = a.after
+      c.after = function(...) D.fly = nil if type(after) == "function" then return after(...) end end
+    end
+    x.act = c
+  end
+  x.fly, x.b2 = nil, true
+  return x
+end
+--- The open pop-out, over everything: up from its icon when it fits (the game's way), else to the side with more room; the
+--- icons shrink to fit, never past the deck's edge.
+function D.FlyPaint(put, f)
+  local at = D.flyAt
+  local o, list = at.o, at.list
+  local n = #list
+  local gap = D.FLY_GAP
+  local roomUp, roomDown = o.y - D.FLY_TOP, D.H - D.FLY_FOOT - (o.y + o.h)
+  local up = n * (D.FLY_MIN + gap) + gap <= roomUp or roomUp >= roomDown      -- (up while its pictures stay a fair size)
+  local room = up and roomUp or roomDown
+  local h = math.max(8, math.min(o.h, math.floor((room - gap) / n) - gap))      -- (a long list: smaller, never past the edge)
+  local tall = n * (h + gap) + gap
+  local top = up and (o.y - tall) or (o.y + o.h)
+  local plate = put({ kind = "flyplate", x = o.x - 2, y = top, w = o.w + 4, h = tall })
+  plate:SetFrameLevel((f:GetFrameLevel() or 1) + 7)
+  plate:EnableMouse(true)                                   -- (a click between its icons lands on nothing behind)
+  for k = 1, n do
+    local i = up and (n - k + 1) or k                       -- (the first nearest its icon, either way)
+    local w = put({ kind = "icon", b = flyItem(list[i]), b2 = true, x = o.x, y = top + gap + (k - 1) * (h + gap), w = o.w, h = h })
+    w:SetFrameLevel((f:GetFrameLevel() or 1) + 8)
+  end
 end
 function PAINT.hero(w, o, m)
   local h = m.hero
@@ -1448,7 +1523,7 @@ end
 --- Build the plain frame (the newest copy's, at the first Show).
 function D.Build()
   if D.frame and D.frame.built == MINOR then return D.frame end
-  if D.frame then D.frame:Hide() end
+  if D.frame then local old = D.frame hush(function() old:Hide() end) end
   local f = CreateFrame("Frame", "BiSDeck", UIParent)
   f.built = MINOR
   f.pieces = {}
@@ -1468,11 +1543,14 @@ function D.Build()
   f.bg:SetAllPoints(f)
   if f.EnableMouseWheel then f:EnableMouseWheel(true) end
   f:SetScript("OnMouseWheel", function(_, delta) if not D.fight then D.Scroll(-(delta or 0)) end end)
-  f:SetScript("OnHide", function()
+  f:SetScript("OnHide", function(self)
     D.DragEnd()
     D.Sleep()
     if D.OverlayClear then D.OverlayClear(D.mainSurf) end
+    -- Escape (the game's list hid it - not one of ours, and not the whole screen going: its own flag is off): folded, not gone
+    if not D.quiet and not self:IsShown() and self == D.frame then D.Fold() end
   end)
+  if T.EscapeCloses then T.EscapeCloses("BiSDeck") end           -- (Pad.lua: never while a gamepad is in use)
   -- THE CORNER IS ITS OWN FRAME, NEVER ONE OF THE PIECES (Arn, 22 Nov, the first look: "when i drag to resize i cant let go" -
   -- 2466 wide): a piece is another box after the next paint, hidden or deaf, and the client tells the letting go to the frame
   -- that was pressed. It also never takes a drag (a Button with RegisterForDrag may get OnDragStop in place of OnMouseUp).
@@ -1740,12 +1818,13 @@ function D.Paint()
   local boxes = T.DeckLayout(m.view, D.W, D.H, D.Store().sw)
   if D.surf == D.mainSurf then D.appRoom = nil end
   local n = 0
+  D.flyAt = nil
   local function put(o)
     n = n + 1
     local w = f.pieces[n]
     if not w then w = piece(f) f.pieces[n] = w end
     w.act, w.tip, w.hot, w.lit, w.dragId, w.keys, w.aloud = nil, nil, nil, nil, nil, nil, nil
-    w.dragApp, w.surf, w.sec, w.secDef, w.hush = nil, D.surf, nil, nil, nil
+    w.dragApp, w.surf, w.sec, w.secDef, w.hush, w.bagItem, w.secRight = nil, D.surf, nil, nil, nil, nil, nil
     if (w.bits or w.lines) and D.NoSigns then D.NoSigns(w) end
     if w.fill then w.fill:Hide() end
     if w.fill2 then w.fill2:Hide() end
@@ -1814,6 +1893,7 @@ function D.Paint()
       w:EnableMouse(false)                                 -- (drawn here; pressed on f.corner, D.Build)
     end
   end
+  if D.flyAt then D.FlyPaint(put, f) else D.fly = nil end   -- (its icon is gone: another page, a fight)
   for i = n + 1, #f.pieces do f.pieces[i]:Hide() end
   if f.find and f.findAt ~= D.paints then f.find:Hide() end
   if f.model and f.modelAt ~= D.paints then f.model:Hide() f.modelKey = nil end
@@ -1948,6 +2028,92 @@ function D.Open(id)
   D.Dirty(true)
   return true
 end
+--[[ FOLDED TO ITS FOOT (Arn, 23 Nov: "when i close deck with x or esc ..., fold into the footer another x on the footer that closes
+  it"). The phone's x and Escape leave only a bar where its foot was (BiSDeckFoot, under the phone's bottom edge, its width): a click
+  on the bar opens the phone again, the bar's own x closes it all. Saved: st.folded (a /reload or a login keeps it folded). The
+  bar is plain (no secure part), so it folds and opens in a fight too; in a fight it is faint and the mouse goes through. ]]
+D.FOOT_H = 26
+function D.Foot()
+  local ft = D.foot
+  if not ft then
+    ft = CreateFrame("Button", "BiSDeckFoot", UIParent)
+    D.foot = ft
+    ft:SetFrameStrata(D.STRATA)
+    ft:SetClampedToScreen(true)
+    ft:SetHeight(D.FOOT_H)
+    ft.bg = ft:CreateTexture(nil, "BACKGROUND")
+    ft.bg:SetAllPoints(ft)
+    ft.wash = ft:CreateTexture(nil, "BORDER")
+    ft.wash:SetAllPoints(ft)
+    ft.bar = ft:CreateTexture(nil, "ARTWORK")
+    ft.bar:SetPoint("TOPLEFT") ft.bar:SetPoint("BOTTOMLEFT") ft.bar:SetWidth(3)
+    ft.a = ft:CreateFontString(nil, "OVERLAY")
+    ft.a:SetPoint("LEFT", ft, "LEFT", 10, 0)
+    ft.b = ft:CreateFontString(nil, "OVERLAY")
+    ft.b:SetPoint("LEFT", ft.a, "RIGHT", 8, 0)
+    ft:SetScript("OnClick", function() D.Show() end)
+    local x = CreateFrame("Button", nil, ft)
+    ft.x = x
+    x:SetPoint("TOPRIGHT") x:SetPoint("BOTTOMRIGHT") x:SetWidth(D.FOOT_H + 6)
+    x.wash = x:CreateTexture(nil, "BORDER")
+    x.wash:SetAllPoints(x)
+    x.a = x:CreateFontString(nil, "OVERLAY")
+    x.a:SetPoint("CENTER")
+    x:SetScript("OnClick", function() D.Close() end)
+    local function tip(self, words)
+      if not GameTooltip then return end
+      GameTooltip:SetOwner(self, "ANCHOR_TOP")
+      GameTooltip:SetText(words)
+      GameTooltip:Show()
+    end
+    local function lit(self, on) self.wash:SetAlpha(on and 0.35 or 0) if self.bar then self.bar:SetAlpha(on and 1 or 0) end end
+    ft:SetScript("OnEnter", function(self) lit(self, true) tip(self, "Open the phone") end)
+    ft:SetScript("OnLeave", function(self) lit(self, false) if GameTooltip then GameTooltip:Hide() end end)
+    x:SetScript("OnEnter", function(self) lit(self, true) tip(self, "Close the phone") end)
+    x:SetScript("OnLeave", function(self) lit(self, false) if GameTooltip then GameTooltip:Hide() end end)
+  end
+  local r, g, b = rgb("surface")
+  ft.bg:SetColorTexture(r, g, b, 0.96)
+  r, g, b = rgb("accent")
+  ft.wash:SetColorTexture(r, g, b, 1) ft.wash:SetAlpha(0)
+  ft.bar:SetColorTexture(r, g, b, 1) ft.bar:SetAlpha(0)
+  ft.x.wash:SetColorTexture(r, g, b, 1) ft.x.wash:SetAlpha(0)
+  say(ft.a, "BiS>", 13, "accent")
+  say(ft.b, "tap to open", 10, "ink2")
+  say(ft.x.a, "x", 13, "ink2", "CENTER")
+  if D.frame then                                            -- (where the phone's foot was: under its bottom edge, its width)
+    ft:ClearAllPoints()
+    ft:SetPoint("BOTTOMLEFT", D.frame, "BOTTOMLEFT", 0, 0)
+    ft:SetPoint("BOTTOMRIGHT", D.frame, "BOTTOMRIGHT", 0, 0)
+  end
+  ft:SetAlpha(D.fight and D.FIGHT_ALPHA or 1)
+  ft:EnableMouse(not D.fight)
+  return ft
+end
+--- x / Escape: the phone folds to its foot.
+function D.Fold()
+  if D.surf ~= D.mainSurf then return D.Phone(D.Fold) end
+  if not T.DECK_LOGIN then return false end
+  D.Build()
+  if not D.W then D.Place(D.Store().shape == "landscape" and "landscape" or "portrait") end
+  local st = D.Store()
+  if D.frame:IsShown() then hush(function() D.frame:Hide() end) end
+  st.open, st.folded = false, true
+  D.Foot():Show()
+  D.Save()
+  return true
+end
+--- The foot's x (and the deck switched off): all of it gone.
+function D.Close()
+  if D.surf ~= D.mainSurf then return D.Phone(D.Close) end
+  local st = D.Store()
+  st.open, st.folded = false, false
+  if D.foot then D.foot:Hide() end
+  if D.frame then hush(function() D.frame:Hide() end) end
+  D.Save()
+  return true
+end
+
 function D.Show()
   if D.surf ~= D.mainSurf then return D.Phone(D.Show) end
   if not T.DECK_LOGIN then return false end
@@ -1957,17 +2123,21 @@ function D.Show()
   if D.Apps then D.Apps() end                               -- (DeckApps.lua: the other addons' icons, the welcome)
   D.Look()
   D.frame:Show()
+  if D.foot then D.foot:Hide() end
   D.Wake()
   D.Paint()
-  st.open = true
+  st.open, st.folded = true, false
   return true
 end
+--- Shut by code (a tool switched off, a test): all of it, the foot too.
 function D.Hide()
   if D.surf ~= D.mainSurf then return D.Phone(D.Hide) end
-  if D.frame then D.Store().open = false D.frame:Hide() D.Save() end end
+  if D.foot then D.foot:Hide() end
+  if D.frame then D.Store().open, D.Store().folded = false, false hush(function() D.frame:Hide() end) D.Save() end end
+--- The key: open, or fold an open one to its foot.
 function D.Toggle()
   if D.surf ~= D.mainSurf then return D.Phone(D.Toggle) end
-  if D.frame and D.frame:IsShown() then D.Hide() else D.Show() end end
+  if D.frame and D.frame:IsShown() then D.Fold() else D.Show() end end
 
 -- one beat, only while shown: a dirty deck paints, a held corner sizes
 function D.Wake()
@@ -2001,6 +2171,7 @@ function D.Fight(on)
   f:SetAlpha(on and D.FIGHT_ALPHA or 1)
   f:SetFrameStrata(on and D.FIGHT_STRATA or D.STRATA)      -- (a fight: under the health bars)
   f:EnableMouse(not on)
+  if D.foot then D.foot:SetAlpha(on and D.FIGHT_ALPHA or 1) D.foot:EnableMouse(not on) end
   if f:IsShown() then D.Paint() end
 end
 
@@ -2017,7 +2188,7 @@ function D.OnEvent(event)
   if event == "PLAYER_LOGIN" then
     T.DECK_LOGIN = true
     D.HushWatch()
-    if D.Store().open then D.Show() end
+    if D.Store().open then D.Show() elseif D.Store().folded then D.Fold() end
     if D.PinsPaint and not D.Store().off then D.PinsPaint() end
   elseif event == "PLAYER_REGEN_DISABLED" then D.Fight(true)
   elseif event == "PLAYER_REGEN_ENABLED" then D.Fight(false) D.Look() D.Dirty()

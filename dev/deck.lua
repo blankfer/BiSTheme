@@ -416,6 +416,33 @@ fire("PLAYER_ENTERING_WORLD")
 ok(D.profile == "PvP" and find("kicker").a.text:find("PINNED"), "pinned by hand: it stays", D.profile)
 D.Pin(nil)
 
+-- FOLDED TO ITS FOOT (Arn, 23 Nov: "when i close deck with x or esc ..., fold into the footer another x on the footer that closes it")
+do
+  D.Show() D.Paint()
+  local cl = find("close")
+  cl.act()
+  local ft = D.foot
+  ok(not D.frame.shown and ft and ft.shown and D.Store().folded and not D.Store().open, "the phone's x: folded to its foot, saved")
+  ok(ft.a.said == "BiS>" and ft.x and ft.x.a.said == "x" and ft.h == D.FOOT_H, "the foot: BiS> and its own x")
+  ft.scripts.OnClick(ft)
+  ok(D.frame.shown and not ft.shown and D.Store().open and not D.Store().folded, "a click on the foot: the phone again")
+  D.frame:Hide()                                              -- (Escape: the game's list hides it)
+  ok(not D.frame.shown and ft.shown and D.Store().folded, "Escape: folded too, not gone")
+  ft.x.scripts.OnClick(ft.x)
+  ok(not D.frame.shown and not ft.shown and not D.Store().folded and not D.Store().open, "the foot's x: all of it closed")
+  D.Show() D.Toggle()
+  ok(not D.frame.shown and ft.shown, "the key on an open phone: folds it")
+  D.Toggle()
+  ok(D.frame.shown and not ft.shown, "the key on a folded one: opens it")
+  D.Fold() fire("PLAYER_REGEN_DISABLED")
+  ok(ft.alpha == D.FIGHT_ALPHA and ft.mouse == false, "a fight: the foot faint, the mouse goes through")
+  fire("PLAYER_REGEN_ENABLED")
+  ok(ft.alpha == 1 and ft.mouse == true, "after it: back")
+  D.Hide()
+  ok(not ft.shown and not D.frame.shown, "shut by code: the foot goes too")
+  D.Show()
+end
+
 -- hidden: nothing runs
 D.Hide()
 local before = calls
@@ -557,6 +584,87 @@ do
     D.page = "BiSLong:p" D.W, D.H, D.shape = W0, H0, S0
     D.Paint()
     for _, w in ipairs(D.frame.pieces) do if w.e1 and w:IsShown() then ok(not w.e1:IsShown(), "its extra words gone with it") end end
+  end
+  -- AN ITEM'S OWN TOOLTIP (Arn, 23 Nov: "give me the item tooltip so i can compare it to my currently equiped item")
+  do
+    D.Register{ owner = "BiSBag", key = "p", name = "Bag", page = { tour = nil, rows = function() return { { text = "Cloak", tip = "Click: disenchants it.", bagItem = { 0, 3 } }, { text = "plain", tip = "words" } } end } }
+    local W0, H0, S0 = D.W, D.H, D.shape
+    D.W, D.H, D.shape, D.page = 260, 462, "portrait", "BiSBag:p"
+    D.Paint()
+    local GT, cmp, hid = _G.GameTooltip, nil, nil
+    local bag, lines, text = nil, {}, nil
+    _G.GameTooltip = { SetOwner = function() end, SetBagItem = function(_, b, s) bag = b .. ":" .. s end, SetText = function(_, t) text = t end,
+      AddLine = function(_, t) lines[#lines + 1] = t end, Show = function() end, Hide = function() end }
+    local keepC, keepH = rawget(_G, "GameTooltip_ShowCompareItem"), rawget(_G, "GameTooltip_HideShoppingTooltips")
+    _G.GameTooltip_ShowCompareItem = function() cmp = true end
+    _G.GameTooltip_HideShoppingTooltips = function() hid = true end
+    local r1, r2 = find("row"), find("row", 2)
+    r1:GetScript("OnEnter")(r1)
+    ok(bag == "0:3" and cmp and lines[1] == "Click: disenchants it." and text == nil, "a row of an item: the game's tooltip of that bag slot, your worn one beside it, our words under", bag)
+    r1:GetScript("OnLeave")(r1)
+    ok(hid, "and both go away")
+    bag, cmp = nil, nil
+    r2:GetScript("OnEnter")(r2)
+    ok(bag == nil and not cmp and text == "words", "any other row: its words, as before")
+    _G.GameTooltip, _G.GameTooltip_ShowCompareItem, _G.GameTooltip_HideShoppingTooltips = GT, keepC, keepH
+    D.W, D.H, D.shape, D.page = W0, H0, S0, "BiSLong:p"
+    D.Paint()
+  end
+  -- A POP-OUT (Arn, 23 Nov, the game's totem bar: "make it pop out like this to select another one" - "imbue too")
+  do
+    local put, cast
+    local fire = { { pic = 11, word = "Searing", act = { word = "put", peek = true, fn = function() put = "Searing" end } },
+                   { pic = 12, word = "Magma", lit = true, act = { word = "put", peek = true, fn = function() put = "Magma" end } },
+                   { pic = 13, word = "Nova", act = { word = "x", spell = "Fire Nova Totem", after = function() cast = true end } } }
+    D.Register{ owner = "BiSFly", key = "p", name = "Fly", page = { tour = nil,
+      hero = function() return { art = "number", big = "32" } end,
+      rows = function() return { { text = "a" }, { text = "b" } } end,
+      icons = function() return { { { pic = 1, word = "Imbue", act = { word = "x", spell = "Rockbiter" } }, { pic = 2, word = "Fire", flyKey = "fire", fly = fire }, { pic = 3, word = "Air" } } } end } }
+    local W0, H0, S0 = D.W, D.H, D.shape
+    D.W, D.H, D.shape, D.page, D.fly = 260, 462, "portrait", "BiSFly:p", nil
+    D.Paint()
+    local function icons() local out = {} for _, w in ipairs(D.frame.pieces) do if w:IsShown() and w.kind == "icon" then out[#out + 1] = w end end return out end
+    local slot = icons()[2]
+    ok(#icons() == 3 and slot.c.text == "Fire" and not slot.sec and slot.act, "an icon with a pop-out: a press, never a cast")
+    slot.act() D.Paint()
+    local all, plate = icons(), find("flyplate")
+    ok(#all == 6 and plate and plate:IsShown() and plate.mouse, "pressed: its column, on a plate that takes the clicks", #all)
+    slot = all[2]
+    ok(slot.lit, "the icon stays lit while it is open")
+    local minY, maxY = math.huge, -math.huge
+    for k = 4, 6 do
+      local p = all[k].pts[1]
+      ok(all[k].level > slot.level, "over everything", all[k].level)
+      local y = -p[5]
+      minY, maxY = math.min(minY, y), math.max(maxY, y + all[k].h)
+    end
+    local sy = -slot.pts[1][5]
+    ok(maxY <= sy and minY >= D.FLY_TOP, "up from its icon, under the status line (the game's way)", minY .. " " .. maxY .. " " .. sy)
+    local nearest = all[6]
+    ok(nearest.pic and nearest.pic.art == 11, "the first one nearest its icon", nearest.pic and nearest.pic.art)
+    local nova
+    for k = 4, 6 do if all[k].pic and all[k].pic.art == 13 then nova = all[k] end end
+    ok(nova and nova.sec and nova.sec.spell == "Fire Nova Totem" and type(nova.sec.after) == "function", "one that casts is secure there too")
+    nova.sec.after() ok(cast and D.fly == nil, "a cast from it: its own after, and the column away")
+    D.Paint() ok(#icons() == 3, "and gone")
+    icons()[2].act() D.Paint()
+    for _, w in ipairs(icons()) do if w.pic and w.pic.art == 12 then w.act() end end
+    D.Paint()
+    ok(put == "Magma" and #icons() == 3 and not find("flyplate"), "a pick: its button, and the column away")
+    icons()[2].act() D.Paint() icons()[2].act() D.Paint()
+    ok(#icons() == 3, "the icon again: away")
+    icons()[2].act() D.Paint()
+    D.Fight(true) ok(#icons() == 3 and D.fly == nil, "a fight: away") D.Fight(false)
+    -- too many to fit above: the other way, or squeezed, never past the edge
+    for i = 4, 14 do fire[i] = { pic = 20 + i, word = "T" .. i, act = { word = "put", peek = true, fn = function() end } } end
+    D.Paint() icons()[2].act() D.Paint()
+    all = icons()
+    local lo, hi = math.huge, -math.huge
+    for k = 4, #all do local y = -all[k].pts[1][5] lo, hi = math.min(lo, y), math.max(hi, y + all[k].h) end
+    ok(#all == 3 + 14 and lo >= 0 and hi <= D.H, "fourteen: all on the deck", lo .. " " .. hi)
+    D.fly = nil
+    D.W, D.H, D.shape, D.page = W0, H0, S0, "BiSLong:p"
+    D.Paint()
   end
   -- back goes where you came from
   do
@@ -1432,7 +1540,7 @@ do
   D.Register{ owner = "BiSCast", key = "a", name = "Cast", order = 0.1,
     card = { prio = function() return 9 end, lines = function() return { "CAST", "", "x", "" } end, buttons = function() return { { word = "TARGET", macro = "/target party1" } } end },
     page = { big = function() return go end, keys = function() return { { word = "EAT", item = 1234 }, { word = "PLAIN", fn = function() used = used + 1 end } } end,
-      rows = function() return { { text = "Totem", act = { word = "cast", spell = "Magma Totem" } }, { text = "no" } } end } }
+      rows = function() return { { text = "Totem", act = { word = "cast", spell = "Magma Totem" }, side = { word = "SKIP", fn = function() used = used + 10 end } }, { text = "no" } } end } }
   local def = D.defs["BiSCast:a"]
   -- every piece knows where it stands: its own numbers on the deck's corner
   local function rect(fr, l, t2)
@@ -1449,24 +1557,27 @@ do
   ok(list and #list == 3 and D.overRoot and drivers[D.overRoot] == "visibility [combat] hide; show", "big, a key and a row: three, on a root a fight hides", list and #list)
   local big
   for _, b in ipairs(list) do if b.piece.kind == "big" then big = b end end
-  ok(big and big.attr.type1 == "spell" and big.attr.spell1 == "Windfury Weapon" and big.parent == D.overRoot and big.pts[1][2] == UIParent, "it casts; it stands on UIParent, not on the deck")
+  ok(big and big.attr["*type1"] == "spell" and big.attr["*spell1"] == "Windfury Weapon" and big.parent == D.overRoot and big.pts[1][2] == UIParent, "it casts; it stands on UIParent, not on the deck")
   ok(big.w == find("big").w * (find("big").scale or 1) and find("big").a.text == "CAST" and not find("big").tip, "as big as the drawn one, which is not dim")
-  for _, b in ipairs(list) do if b.piece.kind == "key" then ok(b.attr.type1 == "item" and b.attr.item1 == "item:1234", "an item") elseif b.piece.kind == "row" then ok(b.attr.spell1 == "Magma Totem", "a row") end end
+  for _, b in ipairs(list) do if b.piece.kind == "key" then ok(b.attr["*type1"] == "item" and b.attr["*item1"] == "item:1234", "an item") elseif b.piece.kind == "row" then ok(b.attr["*spell1"] == "Magma Totem", "a row") end end
+  -- ITS OWN KEYS KEEP THEIR ROOM (Arn, 23 Nov: "skip does not hide the item" - the row's secure click lay over SKIP)
+  for _, b in ipairs(list) do if b.piece.kind == "row" then ok(b.w == (b.piece.w - 52) * (b.piece.scale or 1), "a row's secure click stops short of its SKIP key", b.w .. " of " .. b.piece.w) end end
   D.Paint() ok(D.overOf[D.mainSurf][1] == list[1] and D.overN == 3, "painted again: the same ones")
   -- a click: the last word, then used
   big.scripts.PreClick(big) big.scripts.PostClick(big)
-  ok(big.attr.type1 == "spell" and D.Mine().live ~= nil, "pressed: it casts")
+  ok(big.attr["*type1"] == "spell" and D.Mine().live ~= nil, "pressed: it casts")
   local after = 0
   go = { word = "FIND", macro = "/targetexact Sneed", after = function() after = after + 1 end }
   D.Paint() big.scripts.PostClick(big, "LeftButton", true) big.scripts.PostClick(big, "LeftButton", false)
   ok(after == 1, "what comes after it: once a click", after)
   go = { word = "GIVE", spell = "Innervate", unit = "party2" }
-  D.Paint() ok(big.attr.spell1 == "Innervate" and big.attr.unit == "party2", "a spell on a groupmate")
+  D.Paint() ok(big.attr["*spell1"] == "Innervate" and big.attr.unit == "party2", "a spell on a groupmate")
   go = { word = "NEXT", spell = "Disenchant", bag = 0, slot = 4, ok = function() return bagOk end }
-  D.Paint() ok(big.attr.unit == nil and big.attr["target-bag"] == 0 and big.attr["target-slot"] == 4 and big.attr.spell1 == "Disenchant", "a spell on an item in your bags")
-  big.scripts.PreClick(big) ok(big.attr.type1 == "spell", "still that item: it goes")
-  bagOk = false big.scripts.PreClick(big) ok(big.attr.type1 == nil, "the item moved: the click does nothing")
-  D.Paint() ok(big.attr.type1 == "spell", "and the next paint aims again") bagOk = true
+  D.Paint() ok(big.attr.unit == nil and big.attr["target-bag"] == 0 and big.attr["target-slot"] == 4 and big.attr["*spell1"] == "Disenchant", "a spell on an item in your bags")
+  big.scripts.PreClick(big) ok(big.attr["*type1"] == "spell", "still that item: it goes")
+  bagOk = false big.scripts.PreClick(big) ok(big.attr["*type1"] == nil, "the item moved: the click does nothing")
+  ok(big.attr.type1 == nil and big.attr["shift-type1"] == nil, "(one name for every modifier: \"*type1\" - a Shift-click finds it too)")
+  D.Paint() ok(big.attr["*type1"] == "spell", "and the next paint aims again") bagOk = true
   -- under the mouse: put away, and back
   D.frame.scripts.OnDragStart(D.frame) ok(D.overN == 0, "the deck is dragged: put away")
   D.frame.scripts.OnDragStop(D.frame) lay(D.frame) D.Paint() ok(D.overN == 3, "let go: back", D.overN)
@@ -1483,7 +1594,7 @@ do
   ok(D.overN == 0, "shut in the fight: nothing left behind after it", D.overN)
   -- the card's button, pulled out
   D.Show() D.Flip("portrait") D.page = "home" lay(D.frame) D.Paint() lay(D.frame) D.Paint()
-  local tgt for _, b in ipairs(D.overOf[D.mainSurf] or {}) do if b.attr.macrotext1 == "/target party1" then tgt = b end end
+  local tgt for _, b in ipairs(D.overOf[D.mainSurf] or {}) do if b.attr["*macrotext1"] == "/target party1" then tgt = b end end
   ok(tgt and tgt.piece.kind == "cardbtn", "a live card's secure button", D.overN)
   D.PinOut("BiSCast:a") local pf = D.pinFrames["BiSCast:a"] lay(pf) D.PinPaint("BiSCast:a")
   ok(D.overOf[pf] and #D.overOf[pf] == 1 and pf.b1.shown, "and on the pulled-out card")
