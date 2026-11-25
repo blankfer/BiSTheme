@@ -16,7 +16,7 @@ BiSTheme = BiSTheme or {}
 local T = BiSTheme
 local D = T.Deck
 if not D or not T.DECK_READY then return end
-local MINOR = 1
+local MINOR = 2                       -- 2 (24 Nov 2026): no welcome by itself
 if (T.DECKAPPS_MINOR or 0) >= MINOR then return end
 T.DECKAPPS_MINOR = MINOR
 
@@ -198,18 +198,11 @@ function D.Apps()
       end
     end
     D.Register{ owner = "BiSDeck", key = "apps", name = "Apps", icon = "+", order = 99,
-      page = { title = function() return "Apps" end, kicker = function() return "shown on home" end, tabs = function() return { "ICONS", "CARDS", "STORE" } end, rows = function(tab) return tab == 3 and D.StoreRows and D.StoreRows() or tab == 2 and D.CardRows() or D.AppRows() end,
-        keys = function() return { { word = "WELCOME", fn = D.Replay, tip = "The welcome and the first-time words again" } } end } }
+      page = { title = function() return "Apps" end, kicker = function() return "shown on home" end, tabs = function() return { "ICONS", "CARDS", "STORE" } end, rows = function(tab) return tab == 3 and D.StoreRows and D.StoreRows() or tab == 2 and D.CardRows() or D.AppRows() end } }
+    -- NO WELCOME BY ITSELF (MINOR 2, 24 Nov 2026, Arn: "get rid the on board" - "best thing we can do it just have a easy
+    -- to read ui"): no walk-through at the first opening, no "get to know the deck" card on home, no WELCOME key. The
+    -- page stays for a typed /bist deck welcome only.
     D.Register{ owner = "BiSDeck", key = "welcome", name = "Welcome", hidden = true, order = 98,
-      card = { prio = function() if wel().over or wel().no then return nil end return 3 end,
-        lines = function() local n, all = D.WelcomeDone() return { "WELCOME", "", "Get to know the deck", n .. " / " .. all, "ink2" } end,
-        buttons = function() return { { word = "GO ON", fn = function() D.page = "BiSDeck:welcome" end }, { word = "NO THANKS", fn = function() wel().no = true D.Save() end } } end },
       page = { title = function() return "Welcome" end, kicker = function() local n, all = D.WelcomeDone() return n .. " of " .. all end, steps = D.Welcome } }
-  end
-  local st = D.Store()
-  if not st.welcomed then
-    st.welcomed = true
-    if (D.page or "home") == "home" then D.page = "BiSDeck:welcome" end
-    D.Save()
   end
 end

@@ -23,7 +23,7 @@
         the second); prio / lines are handed `true` when the card is pulled out; a button with peek = true is not "use"
       state = fn -> "on" | "off" | "missing" (default on), about = words, turnOn = button,   -- not on: gray, opens what it is
       open = fn (the icon runs this instead of a page), dev = true (a tool of ours: gray, last), hidden = true (no icon),
-      page.tour = { { text, note }, ... }                  -- shown once, the first time the page is opened
+      page.tour = { { text, note }, ... }                  -- IGNORED since MINOR 4 (24 Nov 2026: no first-visit card)
     }
     H:Dirty()                                            -- something changed: painted at the next beat, only while shown
   A button = { word, fn = function } - or macro / item / spell: those are SECURE and wait for the overlay (below).
@@ -39,7 +39,7 @@
 ]]
 BiSTheme = BiSTheme or {}
 local T = BiSTheme
-local MINOR = 3                                           -- 2 (23 Nov): an icon's pop-out list (b.fly); 3: x / Escape fold it to its foot
+local MINOR = 4                                           -- 2 (23 Nov): an icon's pop-out list (b.fly); 3: x / Escape fold it to its foot; 4 (24 Nov): no first-visit card
 if (T.DECK_MINOR or 0) >= MINOR and T.DECK_READY then return end
 if not T.DeckLayout then return end                       -- the layout file goes first
 T.DECK_MINOR, T.DECK_READY = MINOR, nil
@@ -681,24 +681,10 @@ function D.Model()
   return m
 end
 
---- A page's first visit: its own words, one at a time, GOT IT; then never again (the Apps page has them all back).
-function D.Tour(def)
-  local list = def.page and def.page.tour
-  local st = D.Store()
-  st.toured = type(st.toured) == "table" and st.toured or {}
-  if type(list) ~= "table" or #list == 0 or st.toured[def.id] then return nil end
-  local t = def.tourDef
-  if not t then
-    t = { id = def.id .. ":tour", owner = def.owner, key = def.key, name = def.name, at = 0, skipped = {}, steps = {} }
-    def.tourDef = t
-    function t.over() D.Store().toured[def.id] = true def.tourDef = nil D.Save() end
-    for i, s in ipairs(list) do
-      t.steps[i] = { phase = "HELLO", text = s.text, note = s.note, done = function() return t.at >= i end,
-        button = { word = i < #list and "GOT IT" or "START", fn = function() t.at = math.max(t.at, i) t.stepAt, t.stepHeld = nil, nil if i == #list then t.over() end end } }
-    end
-  end
-  return t
-end
+--- NO FIRST-VISIT CARD (MINOR 4, 24 Nov 2026). Arn: "i hate when you click an app you gotta click the yellow buttons i dont
+--- even read them and other people wont either, best thing we can do it just have a easy to read ui". A click on an app
+--- opens the app itself, every time. `page.tour` is ignored now (an app may still carry one; nothing shows it).
+function D.Tour() return nil end
 
 --- The step shown: the one picked by hand, else the first not done and not skipped.
 function D.StepAt(def, steps)
