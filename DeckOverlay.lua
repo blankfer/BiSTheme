@@ -18,7 +18,7 @@ BiSTheme = BiSTheme or {}
 local T = BiSTheme
 local D = T.Deck
 if not D or not T.DECK_READY or not D.On then return end
-local MINOR = 2                                           -- 2 (23 Nov): "*type1", so a Shift-click casts too
+local MINOR = 3                                           -- 2 (23 Nov): "*type1", so a Shift-click casts too; 3 (25 Nov): none under the pop-out, a refused click stays refused
 if (T.DECKOVER_MINOR or 0) >= MINOR then return end
 T.DECKOVER_MINOR = MINOR
 
@@ -67,6 +67,7 @@ local function what(sec)
   return a, key
 end
 
+D.LATCH = 2                                                -- s a refused press keeps its release refused (make)
 local function make(r)
   local b = CreateFrame("Button", nil, r, "SecureActionButtonTemplate")
   b:RegisterForClicks("AnyUp", "AnyDown")                  -- (the client's template takes the one its own setting says)
@@ -74,11 +75,23 @@ local function make(r)
     if button == "RightButton" then return end
     local sec = self.sec
     if not sec or fighting() then return end
+    -- A REFUSED CLICK STAYS REFUSED (25 Nov 2026, the release bug hunt): the button hears the press AND the release. A
+    -- check refused on the press (the item moved) and repainted the deck; a repaint before the release aimed this catcher
+    -- at the row now under the mouse, and the release - whose check passed - disenchanted THAT item. Now the release of a
+    -- refused press is refused too (the latch lasts D.LATCH s at most, so a release never heard cannot hold it).
+    local now = GetTime and GetTime() or 0
+    if self.latch and now - self.latch < D.LATCH then
+      self:SetAttribute("*type1", nil)
+      self.key = nil
+      return
+    end
+    self.latch = nil
     if type(sec.ok) == "function" then
       local fine, yes = pcall(sec.ok)
       if not (fine and yes) then
         self:SetAttribute("*type1", nil)                    -- cancelled, and not aimed again in this click
         self.key = nil
+        self.latch = now
         D.Phone(D.Dirty)
       end
     end
@@ -88,6 +101,7 @@ local function make(r)
       if not down and self.piece and self.piece.hush and not fighting() then D.Phone(self.piece.hush) end
       return
     end
+    if not down then self.latch = nil end                   -- (the release came: the next press is judged afresh)
     if self.sec and self.def and self.key and not self.sec.peek then D.Used(self.def) end
     -- (what the addon does after it, once a click: the way up)
     if self.sec and self.key and not down and type(self.sec.after) == "function" then D.Call(self.def or D.homeDef, "after", self.sec.after) end
@@ -134,6 +148,23 @@ local function covered(owner, x, y)
   return false
 end
 
+--- UNDER THE OPEN POP-OUT (25 Nov 2026, the release bug hunt): the secure catchers sit 10 levels over their piece, so a row-2
+--- piece's catcher (f+12) rose OVER the pop-out's plain totem choices (f+7 / f+8) - a click on "Searing" dropped the Call or
+--- cast the Recall under it. A piece whose middle lies under the plate, and that is not itself one of the pop-out's own
+--- entries (they stand over the plate), gets no catcher while the pop-out is open.
+function D.UnderFly(w, k)
+  local p = D.flyPlate
+  if not (p and p.IsShown and p:IsShown()) then return false end
+  if (ask(w.GetFrameLevel, w) or 0) > (ask(p.GetFrameLevel, p) or 0) then return false end
+  local pk = ask(p.GetEffectiveScale, p) or 1
+  local pl, pt, pw, ph = ask(p.GetLeft, p), ask(p.GetTop, p), ask(p.GetWidth, p), ask(p.GetHeight, p)
+  local l, t, ww, hh = ask(w.GetLeft, w), ask(w.GetTop, w), ask(w.GetWidth, w), ask(w.GetHeight, w)
+  if not (type(pl) == "number" and type(pt) == "number" and type(pw) == "number" and type(ph) == "number"
+          and type(l) == "number" and type(t) == "number" and type(ww) == "number" and type(hh) == "number") then return false end
+  local x, y = (l + ww / 2) * k, (t - hh / 2) * k
+  return x >= pl * pk and x <= (pl + pw) * pk and y <= pt * pk and y >= (pt - ph) * pk
+end
+
 --- Lay the secure buttons over what `f` (owner's frame) just drew: every shown piece that carries `sec`.
 function D.OverlayPaint(owner, f)
   if fighting() then return 0 end
@@ -148,7 +179,7 @@ function D.OverlayPaint(owner, f)
       local ww, hh = ask(w.GetWidth, w), ask(w.GetHeight, w)
       if type(ww) == "number" and w.secRight then ww = ww - w.secRight end   -- (the row's own keys at its right stay clickable)
       if type(l) == "number" and type(t) == "number" and type(ww) == "number" and type(hh) == "number" and ww > 0 and hh > 0
-        and not covered(owner, (l + ww / 2) * k, (t - hh / 2) * k) then
+        and not covered(owner, (l + ww / 2) * k, (t - hh / 2) * k) and not (owner == D.mainSurf and D.UnderFly(w, k)) then
         r = r or root()
         if not r then break end
         n = n + 1

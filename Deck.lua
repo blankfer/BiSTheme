@@ -23,7 +23,7 @@
         the second); prio / lines are handed `true` when the card is pulled out; a button with peek = true is not "use"
       state = fn -> "on" | "off" | "missing" (default on), about = words, turnOn = button,   -- not on: gray, opens what it is
       open = fn (the icon runs this instead of a page), dev = true (a tool of ours: gray, last), hidden = true (no icon),
-      page.tour = { { text, note }, ... }                  -- shown once, the first time the page is opened
+      page.tour = { { text, note }, ... }                  -- IGNORED since MINOR 4 (24 Nov 2026: no first-visit card)
     }
     H:Dirty()                                            -- something changed: painted at the next beat, only while shown
   A button = { word, fn = function } - or macro / item / spell: those are SECURE and wait for the overlay (below).
@@ -39,7 +39,7 @@
 ]]
 BiSTheme = BiSTheme or {}
 local T = BiSTheme
-local MINOR = 3                                           -- 2 (23 Nov): an icon's pop-out list (b.fly); 3: x / Escape fold it to its foot
+local MINOR = 5                                           -- 2 (23 Nov): an icon's pop-out list (b.fly); 3: x / Escape fold it to its foot; 4 (24 Nov): no first-visit card; 5 (25 Nov): every picture sets its own crop (D.Crop)
 if (T.DECK_MINOR or 0) >= MINOR and T.DECK_READY then return end
 if not T.DeckLayout then return end                       -- the layout file goes first
 T.DECK_MINOR, T.DECK_READY = MINOR, nil
@@ -129,6 +129,14 @@ local function rgb(name)
 end
 
 D.ICON_CROP = { 0.08, 0.92, 0.08, 0.92 }                       -- art (texture coords, not a colour)
+--- EVERY PICTURE SAYS ITS OWN CROP (25 Nov 2026, Arn's shot: Rivals black, Social and BG zoomed blocks, Party a cyan
+--- slash, "the icons sometimes"). The pieces are pooled across kinds: a row that showed a class's circle cut out of the
+--- class sheet (r.coords) kept that crop, and the app or icon painted next into the same piece drew ITS art through the
+--- leftover corner. Each painter now sets the crop it wants, every time (cached, so a repaint costs nothing).
+function D.Crop(pic, co)
+  co = co or D.ICON_CROP
+  if pic.crop ~= co then pic.crop = co pic:SetTexCoord(co[1], co[2], co[3], co[4]) end
+end
 D.CLASS_SHEET = "Interface\\TargetingFrame\\UI-Classes-Circles"
 --- A class's picture for a row: pic, coords (nil, nil when the client has no sheet for it).
 function D.ClassPic(class)
@@ -681,24 +689,10 @@ function D.Model()
   return m
 end
 
---- A page's first visit: its own words, one at a time, GOT IT; then never again (the Apps page has them all back).
-function D.Tour(def)
-  local list = def.page and def.page.tour
-  local st = D.Store()
-  st.toured = type(st.toured) == "table" and st.toured or {}
-  if type(list) ~= "table" or #list == 0 or st.toured[def.id] then return nil end
-  local t = def.tourDef
-  if not t then
-    t = { id = def.id .. ":tour", owner = def.owner, key = def.key, name = def.name, at = 0, skipped = {}, steps = {} }
-    def.tourDef = t
-    function t.over() D.Store().toured[def.id] = true def.tourDef = nil D.Save() end
-    for i, s in ipairs(list) do
-      t.steps[i] = { phase = "HELLO", text = s.text, note = s.note, done = function() return t.at >= i end,
-        button = { word = i < #list and "GOT IT" or "START", fn = function() t.at = math.max(t.at, i) t.stepAt, t.stepHeld = nil, nil if i == #list then t.over() end end } }
-    end
-  end
-  return t
-end
+--- NO FIRST-VISIT CARD (MINOR 4, 24 Nov 2026). Arn: "i hate when you click an app you gotta click the yellow buttons i dont
+--- even read them and other people wont either, best thing we can do it just have a easy to read ui". A click on an app
+--- opens the app itself, every time. `page.tour` is ignored now (an app may still carry one; nothing shows it).
+function D.Tour() return nil end
 
 --- The step shown: the one picked by hand, else the first not done and not skipped.
 function D.StepAt(def, steps)
@@ -1004,6 +998,7 @@ function PAINT.app(w, o, m)
       w.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
     if w.pic.art ~= art then w.pic.art = art w.pic:SetTexture(art) end
+    D.Crop(w.pic)                                         -- (never a row's leftover crop)
     local s = o.wide and 26 or o.bare and o.h - 15 or o.kind == "app" and math.floor(math.min(34 * math.max(0.75, o.k or 1), o.h - 20)) or 34
     w.pic:ClearAllPoints()
     if o.wide then w.pic:SetPoint("LEFT", w, "LEFT", 5, 0)
@@ -1179,8 +1174,7 @@ function PAINT.row(w, o, m)
     end
     if w.pic.art ~= r.pic then w.pic.art = r.pic w.pic:SetTexture(r.pic) end
     -- (a picture cut out of a sheet - a class's circle: r.coords; else the icon's own edge trimmed)
-    local co = type(r.coords) == "table" and r.coords or D.ICON_CROP
-    if w.pic.crop ~= co then w.pic.crop = co w.pic:SetTexCoord(co[1], co[2], co[3], co[4]) end
+    D.Crop(w.pic, type(r.coords) == "table" and r.coords or nil)
     w.pic:ClearAllPoints()
     w.pic:SetPoint("LEFT", w, "LEFT", 3, 0)
     w.pic:SetSize(w.sub and 28 or 18, w.sub and 28 or 18)
@@ -1313,6 +1307,7 @@ function PAINT.icon(w, o, m)
       w.pic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     end
     if w.pic.art ~= b.pic then w.pic.art = b.pic w.pic:SetTexture(b.pic) end
+    D.Crop(w.pic)                                         -- (never a row's leftover crop)
     w.pic:ClearAllPoints()
     w.pic:SetPoint("TOP", w, "TOP", 0, -3)
     local side = (o.b2 and o.h < 36) and o.h - 6 or o.b and o.h - 13 or o.h - 16   -- (a squeezed pop-out: the picture alone)
@@ -1381,6 +1376,7 @@ function D.FlyPaint(put, f)
   local plate = put({ kind = "flyplate", x = o.x - 2, y = top, w = o.w + 4, h = tall })
   plate:SetFrameLevel((f:GetFrameLevel() or 1) + 7)
   plate:EnableMouse(true)                                   -- (a click between its icons lands on nothing behind)
+  D.flyPlate = plate                                        -- (DeckOverlay: no secure click under it - D.UnderFly)
   for k = 1, n do
     local i = up and (n - k + 1) or k                       -- (the first nearest its icon, either way)
     local w = put({ kind = "icon", b = flyItem(list[i]), b2 = true, x = o.x, y = top + gap + (k - 1) * (h + gap), w = o.w, h = h })
@@ -1893,6 +1889,7 @@ function D.Paint()
       w:EnableMouse(false)                                 -- (drawn here; pressed on f.corner, D.Build)
     end
   end
+  D.flyPlate = nil
   if D.flyAt then D.FlyPaint(put, f) else D.fly = nil end   -- (its icon is gone: another page, a fight)
   for i = n + 1, #f.pieces do f.pieces[i]:Hide() end
   if f.find and f.findAt ~= D.paints then f.find:Hide() end

@@ -805,29 +805,38 @@ do
   local mine = 0
   D.Register{ owner = "BiSProbe", key = "deck", name = "Probe", icon = "Pd", dev = true, order = 1, open = function() mine = mine + 1 end, badge = function() return 25 end }
   D.Show()
-  ok(D.page == "BiSDeck:welcome" and find("title").a.text == "Welcome" and find("stephead").a.text:find("WELCOME", 1, true), "the first time ever: the welcome", D.page)
-  click(find("big"))
-  ok(find("steptext").a.text:find("^Drag the deck"), "one button, on to the next", find("steptext").a.text)
+  -- NO WELCOME BY ITSELF (Arn, 24 Nov: "get rid the on board" - "just have a easy to read ui")
+  ok(D.page == "home", "the first time ever: home, no welcome walk-through", D.page)
+  local wc0
+  for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then wc0 = true end end
+  ok(not wc0, "and no welcome card on home")
+  -- NO WELCOME AT ALL (Arn, 25 Nov: "only leave the try deck, no more onboarding per app" - "remove the button"): no page,
+  -- no way back to it
+  ok(D.defs["BiSDeck:welcome"] == nil and D.Replay == nil and D.Welcome == nil, "no welcome page, no replay, no steps")
+  -- EVERY PICTURE SAYS ITS OWN CROP (Arn's shot, 25 Nov: Rivals black, Social and BG zoomed, Party a cyan slash). A piece
+  -- that showed a class circle cut from the class sheet, reused for an app icon, must not keep that corner.
+  do
+    local cut
+    local pic = { SetTexCoord = function(_, a, b, c, d) cut = { a, b, c, d } end }
+    local CLASS = { 0.25, 0.5, 0, 0.25 }
+    D.Crop(pic, CLASS)
+    ok(cut and cut[1] == 0.25 and cut[4] == 0.25, "a row's class circle: its corner of the sheet")
+    D.Crop(pic)
+    ok(cut[1] == D.ICON_CROP[1] and cut[2] == D.ICON_CROP[2] and cut[4] == D.ICON_CROP[4], "the same piece as an app icon: the whole icon again")
+    cut = nil
+    D.Crop(pic)
+    ok(cut == nil, "and a repaint with nothing changed costs nothing")
+  end
   D.frame.scripts.OnDragStart(D.frame) D.frame.scripts.OnDragStop(D.frame)
   tick(2)
-  ok(find("steptext").a.text:find("^Pull the corner"), "you dragged it: on by itself", find("steptext").a.text)
+  ok(D.page == "home", "dragging it opens nothing", D.page)
   local grip = D.frame.corner
   grip.scripts.OnMouseDown(grip) cx, cy = 5040, -140 tick(0.1) grip.scripts.OnMouseUp(grip)
   tick(2)
-  ok(find("steptext").a.text:find("^Tall or wide"), "you sized it: on", find("steptext").a.text)
-  click(find("link", 2))
-  ok(find("steptext").a.text:find("^Read aloud"), "skipped: on", find("steptext").a.text)
-  click(find("big"))
-  ok(D.page == "switches", "its button opens the switches")
-  click(find("home"))
+  ok(D.page == "home", "sizing it opens nothing either", D.page)
   ok(D.page == "home" and count("app") > 0, "home", D.page)
-  local wc
-  for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then wc = find("card", i) end end
-  ok(wc and wc.b.text:find(" / 10", 1, true), "a card says how far you are", wc and wc.b.text)
   D.Hide() D.Show()
-  ok(D.page == "home", "it never opens by itself again", D.page)
-  click(wc)
-  ok(D.page == "BiSDeck:welcome" and find("steptext").a.text:find("^Dark is the clean"), "the card goes on where you were", find("steptext") and find("steptext").a.text)
+  ok(D.page == "home", "it never opens by itself", D.page)
   -- the icons
   local function icon(name)
     D.page = "home" D.appSkip = nil D.Size(400, 760)
@@ -877,39 +886,18 @@ do
   click(row("Gamba"))
   ok(icon("Gamba") ~= nil, "showing one by hand shows them again")
   ok(row == nil or not (function() D.Open("BiSDeck:apps") return row("Apps") end)(), "Apps is not on its own list")
-  -- a page's own first words
+  -- NO FIRST-VISIT CARD (Arn, 24 Nov: "i hate when you click an app you gotta click the yellow buttons"): a page that
+  -- still carries a tour opens straight to itself, the first time too
   D.Register{ owner = "BiSNew", key = "p", name = "New", order = 5, page = { tour = { { text = "One thing." }, { text = "Another." } }, rows = function() return { { text = "a row" } } end } }
   D.Open("BiSNew:p")
-  ok(find("steptext").a.text == "One thing." and find("kicker").a.text == "FIRST TIME HERE", "a page's first time: its words")
-  click(find("big"))
-  ok(find("steptext").a.text == "Another." and find("big").a.text == "START", "one at a time")
-  click(find("big"))
-  ok(count("row") == 1 and count("steptext") == 0 and D.Store().toured["BiSNew:p"], "then the page, for good")
-  D.Open("BiSTools:bosses") D.Open("BiSNew:p")
-  ok(count("row") == 1, "never again")
-  click(find("back"))
+  ok(count("row") == 1 and count("steptext") == 0 and count("big") == 0, "a page's first time: the page itself, no yellow button")
   D.Open("BiSDeck:apps")
-  click(find("key"))
-  ok(D.page == "BiSDeck:welcome" and find("steptext").a.text:find("^This is the BiS deck") and not D.Store().toured["BiSNew:p"], "WELCOME on the Apps page: all of it again", find("steptext").a.text)
-  D.Open("BiSNew:p")
-  click(find("link", 2))
-  ok(count("row") == 1, "a tour's skip is enough of it")
-  -- the pad, in a tour
-  D.Store().toured = {}
-  D.PadTab(1)
-  ok(find("steptext") and find("steptext").a.text == "Another.", "RB: the tour's next", find("steptext") and find("steptext").a.text)
-  -- NO THANKS
-  D.Store().wel = {} D.page = "home" D.Size(400, 760)
-  local before1 = 0
-  for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then before1 = before1 + 1 end end
-  for _, w in ipairs(D.frame.pieces) do if w.shown and w.kind == "cardbtn" and w.a.text == "NO THANKS" then click(w) break end end
-  local after1 = 0
-  for i = 1, count("card") do if find("card", i).c.text == "WELCOME" then after1 = after1 + 1 end end
-  ok(before1 == 1 and after1 == 0, "NO THANKS: the card goes", before1 .. " " .. after1)
+  ok(count("key") == 0, "no WELCOME key on the Apps page")
+  D.page = "home" D.Size(400, 760)
   -- an addon that hands in its own icon wins over the catalogue's
   ok(D.Register{ owner = "BiSGamba", key = "app", name = "Gamba!", open = function() end } and icon("Gamba!") ~= nil and icon("Gamba") == nil, "an addon's own icon wins")
   -- no catalogue on a client that cannot say
-  for _, pg in ipairs({ "BiSDeck:apps", "BiSDeck:welcome", "BiSGuild:app", "BiSNew:p" }) do
+  for _, pg in ipairs({ "BiSDeck:apps", "BiSGuild:app", "BiSNew:p" }) do
     for _, s in ipairs({ { 220, 300 }, { 324, 576 }, { 430, 300 }, { 1366, 768 } }) do
       D.page, D.W, D.H, D.shape = pg, s[1], s[2], T.DeckShape(s[1], s[2])
       local okP, why = pcall(D.Paint)
